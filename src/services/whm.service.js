@@ -11,22 +11,23 @@ class WHMService {
       'https://localhost:2087/json-api/';
     
     this.username = process.env.WHM_USERNAME || 'root';
-    this.apiToken = process.env.WHM_API_TOKEN || '';
-    
-    // Create axios instance with default configuration
+    // Create axios instance
     this.api = axios.create({
       baseURL: this.baseURL,
       headers: {
-        Authorization: `WHM ${this.username}:${this.apiToken}`,
-        'Content-Type': 'application/json',
         Accept: 'application/json'
       },
       httpsAgent: new https.Agent({
-        // Verify WHM's certificate by default: skipping it lets anyone on the
-        // network path read the root API token. Set WHM_INSECURE_TLS=true only
-        // for a server reached by IP or with a self-signed certificate.
         rejectUnauthorized: process.env.WHM_INSECURE_TLS !== 'true'
       })
+    });
+
+    // Add request interceptor to dynamically set Authorization
+    this.api.interceptors.request.use(config => {
+      const username = process.env.WHM_USERNAME || 'root';
+      const apiToken = process.env.WHM_API_TOKEN || '';
+      config.headers['Authorization'] = `WHM ${username}:${apiToken}`;
+      return config;
     });
     
     // Add response interceptor for logging
@@ -45,14 +46,15 @@ class WHMService {
   }
   
   /**
-   * Make a GET request to the WHM API
+   * Make a GET request to the WHM API v1
    * @param {string} endpoint - API endpoint
    * @param {object} params - Query parameters
    * @returns {Promise<any>} - API response
    */
   async get(endpoint, params = {}) {
     try {
-      const response = await this.api.get(endpoint, { params });
+      const queryParams = { 'api.version': 1, ...params };
+      const response = await this.api.get(endpoint, { params: queryParams });
       return response.data;
     } catch (error) {
       throw this._handleApiError(error);
@@ -60,14 +62,17 @@ class WHMService {
   }
   
   /**
-   * Make a POST request to the WHM API
+   * Make a POST request to the WHM API v1
    * @param {string} endpoint - API endpoint
    * @param {object} data - Request body
    * @returns {Promise<any>} - API response
    */
   async post(endpoint, data = {}) {
     try {
-      const response = await this.api.post(endpoint, data);
+      const postData = querystring.stringify({ 'api.version': 1, ...data });
+      const response = await this.api.post(endpoint, postData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
       return response.data;
     } catch (error) {
       throw this._handleApiError(error);
