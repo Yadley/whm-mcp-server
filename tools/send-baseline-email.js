@@ -4,12 +4,12 @@ const w = new WHMService();
 const axios = require('axios');
 
 async function main() {
-  console.log('Sending live baseline email to info@creativeyadley.com with SPF-aligned sender...');
+  console.log('Sending live email with new layout to info@creativeyadley.com (--notify-only --force-ticket)...');
   
   const runnerCode = `<?php
 header('Content-Type: text/plain');
 $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-$proc = proc_open('/usr/local/bin/php /home/creativeyadley/bin/scan_migrated_sites.php --notify-only', $descriptors, $pipes);
+$proc = proc_open('/usr/local/bin/php /home/creativeyadley/bin/scan_migrated_sites.php --notify-only --force-ticket', $descriptors, $pipes);
 if (is_resource($proc)) {
     echo stream_get_contents($pipes[1]);
     echo stream_get_contents($pipes[2]);
@@ -43,8 +43,7 @@ if (is_resource($proc)) {
     sourcefiles: 'public_html/clientarea/send_baseline_email.php'
   });
 
-  console.log('Baseline email dispatched successfully!');
+  console.log('New layout email sent successfully!');
 }
 
 main().catch(console.error);
-

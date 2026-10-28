@@ -598,23 +598,6 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     </body>
     </html>
     ";
-                
-                <div class='summary'>
-                    <strong>Audit Summary ({$dateStr}):</strong><br>
-                    • Total Accounts & Domains Audited: <strong>{$totalScanned}</strong><br>
-                    • Active on Server / Cloudflare / External A-Record: <strong>{$activeCount}</strong><br>
-                    • Confirmed Migrated Away: <strong>{$migratedCount}</strong><br>
-                    • Dead / Expired Domains: <strong>{$deadCount}</strong>
-                </div>
-                
-                <p style='font-size: 12px; color: #64748b; margin-top: 25px;'>
-                    Sent automatically by Creative Yadley Migration Scanner from <code>server2.creativeyadley.com</code>.
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-    ";
     
     // Authenticated SPF-aligned headers
     $headers = [
