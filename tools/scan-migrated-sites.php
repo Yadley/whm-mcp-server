@@ -3,9 +3,10 @@
  * Creative Yadley - Server 2 Migration & Nameserver Audit Scanner
  * 
  * Purpose:
- * Detects client websites/accounts that have migrated away to other hosts.
+ * Audits all accounts, services, and domains on Server 2 and WHMCS to immediately detect 
+ * client websites that have migrated away to other hosts.
  * 
- * Valid Nameservers:
+ * Authorized Nameservers:
  * - ns1.creativeyadley.com
  * - ns2.creativeyadley.com
  * - bruce.ns.cloudflare.com
@@ -14,18 +15,19 @@
  * - scott.ns.cloudflare.com
  * 
  * Smart Detection Rules:
- * 1. If domain is on Creative Yadley Cloudflare (bruce/elinore/jewel/scott): ACTIVE
- * 2. If domain is on Creative Yadley NS (ns1/ns2.creativeyadley.com):
+ * 1. Creative Yadley Cloudflare (bruce/elinore/jewel/scott): ACTIVE
+ * 2. Creative Yadley Nameservers (ns1/ns2.creativeyadley.com):
  *    - A record matches Server 2 (66.29.147.164): ACTIVE
  *    - A record points elsewhere: A_RECORD_MIGRATED
- * 3. If domain is on EXTERNAL NS (GoDaddy, Wix, Bluehost, etc.):
- *    - A record still points to Server 2 (66.29.147.164): ACTIVE (External DNS pointing to us)
- *    - A record does NOT point to Server 2: MIGRATED_AWAY
+ * 3. External Nameservers (GoDaddy, Wix, Bluehost, Squarespace, external Cloudflare):
+ *    - A record points to Server 2 (66.29.147.164): ACTIVE (External DNS pointing to us)
+ *    - A record points elsewhere: MIGRATED_AWAY
  * 
  * Features:
- * - Queries public DNS (1.1.1.1 & 8.8.8.8) to bypass local caching
- * - Sends HTML summary alert to info@creativeyadley.com
- * - Dispatches automated courtesy ticket in WHMCS (once per newly migrated site)
+ * - Normalizes domains (handles trailing slashes like 'domain.com/' and URLs like 'https://...')
+ * - Discovers domains from WHMCS (Active, Suspended, Cancelled) and server cPanel accounts
+ * - Bypasses local DNS cache by querying public DNS resolvers (1.1.1.1 & 8.8.8.8)
+ * - Sends authenticated SPF-compliant HTML alerts to info@creativeyadley.com
  * - Tracks state in migration_state.json to prevent duplicate notifications
  */
 
@@ -38,6 +40,7 @@ $forceTicket = isset($options['force-ticket']);
 $filterDomain = isset($options['domain']) ? strtolower(trim($options['domain'])) : null;
 
 $adminEmail = 'info@creativeyadley.com';
+$fromEmail = 'noreply@creativeyadley.com';
 $serverIp = '66.29.147.164';
 
 $validNameservers = [
@@ -59,12 +62,25 @@ function logMessage($msg, $file) {
     @file_put_contents($file, $line, FILE_APPEND);
 }
 
+function cleanDomain($raw) {
+    if (empty($raw)) return null;
+    $d = strtolower(trim($raw));
+    $d = preg_replace('#^https?://#i', '', $d);
+    $d = rtrim($d, '/');
+    $parts = explode('/', $d);
+    $d = trim($parts[0]);
+    if (filter_var($d, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) {
+        return $d;
+    }
+    return null;
+}
+
 logMessage("=== Starting Creative Yadley Migration Scanner ===", $logFile);
 if ($isDryRun) {
     logMessage("MODE: DRY RUN (no tickets or emails will be dispatched)", $logFile);
 }
 
-// 1. Load WHMCS Environment (if available)
+// 1. Connect to WHMCS
 $whmcsPath = '/home/creativeyadley/public_html/clientarea';
 $whmcsAvailable = false;
 $pdo = null;
@@ -85,61 +101,92 @@ if (file_exists($whmcsPath . '/configuration.php')) {
     }
 }
 
-// Bootstrap WHMCS API if present
 if (file_exists($whmcsPath . '/init.php')) {
     try {
         require_once $whmcsPath . '/init.php';
     } catch (Throwable $e) {}
 }
 
-// 2. Discover Accounts & Domains
+// 2. Discover Domains Across WHMCS & Server
 $targets = [];
 
 if ($pdo) {
     try {
+        // Query tblhosting for Active, Suspended, and Cancelled accounts
         $stmt = $pdo->query("
             SELECT h.id as serviceid, h.userid, h.domain, h.username, h.domainstatus,
                    c.firstname, c.lastname, c.email as client_email, c.companyname
             FROM tblhosting h
-            JOIN tblclients c ON c.id = h.userid
-            WHERE h.domainstatus = 'Active' AND h.domain IS NOT NULL AND h.domain != ''
+            LEFT JOIN tblclients c ON c.id = h.userid
+            WHERE h.domain IS NOT NULL AND h.domain != ''
         ");
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $dom = strtolower(trim($row['domain']));
-            if (!empty($dom) && !isset($targets[$dom])) {
+            $dom = cleanDomain($row['domain']);
+            if ($dom && !isset($targets[$dom])) {
                 $targets[$dom] = [
                     'domain' => $dom,
                     'user' => $row['username'],
                     'serviceid' => $row['serviceid'],
                     'userid' => $row['userid'],
-                    'client_name' => trim($row['firstname'] . ' ' . $row['lastname']),
+                    'client_name' => trim(($row['firstname'] ?? '') . ' ' . ($row['lastname'] ?? '')),
                     'client_email' => $row['client_email'],
-                    'source' => 'WHMCS'
+                    'status_in_whmcs' => $row['domainstatus'],
+                    'source' => 'WHMCS Hosting'
                 ];
             }
         }
-        logMessage("Loaded " . count($targets) . " active domains from WHMCS.", $logFile);
+        logMessage("Loaded " . count($targets) . " unique domains from WHMCS hosting services.", $logFile);
+        
+        // Also load registered domains from tbldomains
+        $stmt2 = $pdo->query("
+            SELECT d.id as domainid, d.userid, d.domain, d.status,
+                   c.firstname, c.lastname, c.email as client_email
+            FROM tbldomains d
+            LEFT JOIN tblclients c ON c.id = d.userid
+            WHERE d.domain IS NOT NULL AND d.domain != ''
+        ");
+        $addedFromDomains = 0;
+        while ($row = $stmt2->fetch(PDO::FETCH_ASSOC)) {
+            $dom = cleanDomain($row['domain']);
+            if ($dom && !isset($targets[$dom])) {
+                $targets[$dom] = [
+                    'domain' => $dom,
+                    'user' => '',
+                    'serviceid' => null,
+                    'userid' => $row['userid'],
+                    'client_name' => trim(($row['firstname'] ?? '') . ' ' . ($row['lastname'] ?? '')),
+                    'client_email' => $row['client_email'],
+                    'status_in_whmcs' => $row['status'],
+                    'source' => 'WHMCS Registered Domain'
+                ];
+                $addedFromDomains++;
+            }
+        }
+        if ($addedFromDomains > 0) {
+            logMessage("Added {$addedFromDomains} domains from WHMCS registered domains table.", $logFile);
+        }
     } catch (Throwable $e) {
         logMessage("Warning: WHMCS query failed: " . $e->getMessage(), $logFile);
     }
 }
 
-// Also discover domains from server vhosts (/etc/trueuserdomains)
+// Discover server cPanel accounts from /etc/trueuserdomains
 if (file_exists('/etc/trueuserdomains')) {
     $lines = file('/etc/trueuserdomains', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         if (strpos($line, ':') !== false) {
             list($d, $u) = explode(':', $line, 2);
-            $d = strtolower(trim($d));
+            $dom = cleanDomain($d);
             $u = trim($u);
-            if (!empty($d) && !isset($targets[$d])) {
-                $targets[$d] = [
-                    'domain' => $d,
+            if ($dom && !isset($targets[$dom])) {
+                $targets[$dom] = [
+                    'domain' => $dom,
                     'user' => $u,
                     'serviceid' => null,
                     'userid' => null,
-                    'client_name' => 'Server Account (' . $u . ')',
+                    'client_name' => 'Server cPanel (' . $u . ')',
                     'client_email' => null,
+                    'status_in_whmcs' => 'Server Only',
                     'source' => 'Server cPanel'
                 ];
             }
@@ -159,6 +206,7 @@ if ($filterDomain) {
                 'userid' => null,
                 'client_name' => 'Single Check',
                 'client_email' => null,
+                'status_in_whmcs' => 'Unknown',
                 'source' => 'Manual'
             ]
         ];
@@ -280,7 +328,6 @@ foreach ($targets as $domain => $meta) {
         $status = 'DEAD_OR_EXPIRED';
         $details = 'No NS records found at public DNS';
     } else {
-        // Check if any returned nameserver matches our authorized nameserver list
         $hasOurNS = false;
         $isOurCloudflare = false;
         
@@ -300,11 +347,9 @@ foreach ($targets as $domain => $meta) {
         
         if ($hasOurNS) {
             if ($isOurCloudflare) {
-                // Verified on Creative Yadley Cloudflare account
                 $status = 'ACTIVE';
                 $details = 'Active on Creative Yadley Cloudflare (' . implode(', ', array_slice($nsRecords, 0, 2)) . ')';
             } else {
-                // ns1/ns2.creativeyadley.com
                 if ($pointsToOurServer) {
                     $status = 'ACTIVE';
                     $details = "Points directly to Server 2 ({$serverIp})";
@@ -317,8 +362,7 @@ foreach ($targets as $domain => $meta) {
                 }
             }
         } else {
-            // EXTERNAL NAMESERVERS (e.g. GoDaddy, Wix, Bluehost, Google Domains)
-            // Check if client is still using our hosting via an A-record pointing to 66.29.147.164
+            // External Nameservers (GoDaddy, Wix, Bluehost, Google Domains, external Cloudflare, etc.)
             if ($pointsToOurServer) {
                 $status = 'ACTIVE';
                 $details = "Active via External DNS (" . implode(', ', array_slice($nsRecords, 0, 2)) . ") pointing to Server 2 ({$serverIp})";
@@ -339,6 +383,7 @@ foreach ($targets as $domain => $meta) {
         'userid' => $meta['userid'],
         'client_name' => $meta['client_name'],
         'client_email' => $meta['client_email'],
+        'status_in_whmcs' => $meta['status_in_whmcs'],
         'status' => $status,
         'details' => $details,
         'ns' => $nsRecords,
@@ -348,7 +393,6 @@ foreach ($targets as $domain => $meta) {
     
     $auditResults[$domain] = $entry;
     
-    // Check if this is a newly discovered migration
     $previousStatus = isset($state[$domain]) ? $state[$domain]['status'] : 'ACTIVE';
     $isNowMigrated = ($status === 'MIGRATED_AWAY' || $status === 'A_RECORD_MIGRATED');
     $wasMigrated = ($previousStatus === 'MIGRATED_AWAY' || $previousStatus === 'A_RECORD_MIGRATED');
@@ -357,7 +401,6 @@ foreach ($targets as $domain => $meta) {
         $newMigrations[$domain] = $entry;
     }
     
-    // Update state cache
     $state[$domain] = [
         'status' => $status,
         'details' => $details,
@@ -369,7 +412,6 @@ foreach ($targets as $domain => $meta) {
     ];
 }
 
-// Save updated state file
 if (!$isDryRun) {
     @file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
 }
@@ -383,6 +425,12 @@ function openWhmcsCourtesyTicket($pdo, $meta, $entry, $isDryRun, $logFile) {
     
     if (empty($userId)) {
         logMessage("Skipping courtesy ticket for {$domain}: No WHMCS user ID linked.", $logFile);
+        return null;
+    }
+    
+    // Only open tickets for Active services in WHMCS (don't ticket clients who already cancelled)
+    if (($meta['status_in_whmcs'] ?? '') === 'Cancelled' || ($meta['status_in_whmcs'] ?? '') === 'Terminated') {
+        logMessage("Skipping courtesy ticket for {$domain}: Account is already {$meta['status_in_whmcs']} in WHMCS.", $logFile);
         return null;
     }
     
@@ -439,7 +487,6 @@ function openWhmcsCourtesyTicket($pdo, $meta, $entry, $isDryRun, $logFile) {
     return null;
 }
 
-// Dispatch courtesy tickets for newly migrated sites
 if (!$isDryRun && !$isNotifyOnly && !empty($newMigrations)) {
     foreach ($newMigrations as $domain => $entry) {
         $meta = $targets[$domain];
@@ -455,7 +502,7 @@ if (!$isDryRun && !$isNotifyOnly && !empty($newMigrations)) {
 }
 
 // 7. Dispatch Notification Email to info@creativeyadley.com
-function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, $isDryRun, $logFile) {
+function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile) {
     if (empty($newMigrations)) {
         logMessage("No new migration events detected. Skipping admin alert email.", $logFile);
         return;
@@ -469,6 +516,7 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
         $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
         $user = htmlspecialchars($item['user']);
         $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
+        $whmcsStatus = htmlspecialchars($item['status_in_whmcs'] ?? 'N/A');
         $ticketStatus = !empty($item['courtesy_ticket_id']) 
             ? "<span style='color: green; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"
             : "<span style='color: #888;'>No ticket</span>";
@@ -478,6 +526,7 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
             <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'><strong>" . htmlspecialchars($domain) . "</strong></td>
             <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$user}</td>
             <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$client}</td>
+            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$whmcsStatus}</td>
             <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$ns}</td>
             <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$reason}</td>
             <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$ticketStatus}</td>
@@ -486,6 +535,7 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
     
     $totalScanned = count($auditResults);
     $activeCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'ACTIVE'));
+    $migratedCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'MIGRATED_AWAY' || $x['status'] === 'A_RECORD_MIGRATED'));
     $deadCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'DEAD_OR_EXPIRED'));
     $dateStr = date('Y-m-d H:i:s');
     
@@ -494,7 +544,7 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
     <head>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #333; line-height: 1.5; }
-            .container { max-width: 850px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; }
+            .container { max-width: 900px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; }
             .header { background: #1e293b; color: #fff; padding: 16px 20px; border-radius: 6px 6px 0 0; }
             .header h2 { margin: 0; font-size: 20px; }
             .content { padding: 20px 0; }
@@ -518,6 +568,7 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
                             <th>Domain</th>
                             <th>cPanel User</th>
                             <th>WHMCS Client</th>
+                            <th>WHMCS Status</th>
                             <th>Nameservers</th>
                             <th>Details</th>
                             <th>Courtesy Ticket</th>
@@ -530,9 +581,9 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
                 
                 <div class='summary'>
                     <strong>Audit Summary ({$dateStr}):</strong><br>
-                    • Total Accounts Audited: <strong>{$totalScanned}</strong><br>
+                    • Total Accounts & Domains Audited: <strong>{$totalScanned}</strong><br>
                     • Active on Server / Cloudflare / External A-Record: <strong>{$activeCount}</strong><br>
-                    • Newly Migrated Away: <strong>{$count}</strong><br>
+                    • Confirmed Migrated Away: <strong>{$migratedCount}</strong><br>
                     • Dead / Expired Domains: <strong>{$deadCount}</strong>
                 </div>
                 
@@ -545,12 +596,14 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
     </html>
     ";
     
+    // Authenticated SPF-aligned headers
     $headers = [
         'MIME-Version: 1.0',
         'Content-type: text/html; charset=UTF-8',
-        'From: Creative Yadley Server2 <server2@creativeyadley.com>',
-        'Reply-To: info@creativeyadley.com',
-        'X-Mailer: PHP/' . phpversion()
+        "From: Creative Yadley Admin <{$fromEmail}>",
+        "Reply-To: {$adminEmail}",
+        "Return-Path: <{$fromEmail}>",
+        'X-Mailer: CreativeYadley-MigrationScanner/2.0'
     ];
     
     if ($isDryRun) {
@@ -558,15 +611,16 @@ function sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, 
         return;
     }
     
-    $sent = @mail($adminEmail, $subject, $htmlBody, implode("\r\n", $headers));
+    // Pass -f parameter so envelope sender matches noreply@creativeyadley.com (SPF pass on Google Workspace)
+    $sent = @mail($adminEmail, $subject, $htmlBody, implode("\r\n", $headers), "-f " . escapeshellarg($fromEmail));
     if ($sent) {
-        logMessage("SUCCESS: Alert email sent to {$adminEmail}.", $logFile);
+        logMessage("SUCCESS: Alert email sent to {$adminEmail} (From: {$fromEmail}).", $logFile);
     } else {
         logMessage("Notice: mail() returned false. Ensure local exim/sendmail is running.", $logFile);
     }
 }
 
-sendAdminNotificationEmail($adminEmail, $newMigrations, $auditResults, $isDryRun, $logFile);
+sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile);
 
 // 8. Console Summary Output
 $migratedList = array_filter($auditResults, fn($x) => $x['status'] === 'MIGRATED_AWAY' || $x['status'] === 'A_RECORD_MIGRATED');
@@ -586,7 +640,7 @@ echo str_repeat('=', 60) . "\n";
 if (!empty($newMigrations)) {
     echo "\n🚨 NEWLY MIGRATED DOMAINS TODAY:\n";
     foreach ($newMigrations as $d => $info) {
-        echo " - {$d} [{$info['user']}] -> {$info['details']}\n";
+        echo " - {$d} [{$info['user']}] ({$info['status_in_whmcs']}) -> {$info['details']}\n";
     }
 }
 
