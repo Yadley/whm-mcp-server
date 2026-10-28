@@ -514,22 +514,27 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     $rows = "";
     foreach ($newMigrations as $domain => $item) {
         $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
-        $user = htmlspecialchars($item['user']);
         $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
-        $whmcsStatus = htmlspecialchars($item['status_in_whmcs'] ?? 'N/A');
+        $whmcsStatusRaw = $item['status_in_whmcs'] ?? 'N/A';
+        $statusBadge = ($whmcsStatusRaw === 'Active') 
+            ? "<span style='background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Active</span>"
+            : "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
+        
         $ticketStatus = !empty($item['courtesy_ticket_id']) 
-            ? "<span style='color: green; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"
-            : "<span style='color: #888;'>No ticket</span>";
-        $reason = htmlspecialchars($item['details']);
+            ? "<span style='color: #16a34a; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"
+            : "<span style='color: #94a3b8;'>None</span>";
+        
+        $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
+        $destHtml = "<div style='font-weight: 500; color: #0f172a;'>{$ns}</div><div style='color: #64748b; font-size: 11px;'>IP: {$ipsStr}</div>";
         
         $rows .= "<tr>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'><strong>" . htmlspecialchars($domain) . "</strong></td>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$user}</td>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$client}</td>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$whmcsStatus}</td>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$ns}</td>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$reason}</td>
-            <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{$ticketStatus}</td>
+            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-all;'>
+                <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: #2563eb; text-decoration: none; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
+            </td>
+            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$client}</td>
+            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$statusBadge}</td>
+            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-word;'>{$destHtml}</td>
+            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$ticketStatus}</td>
         </tr>";
     }
     
@@ -543,14 +548,14 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     <html>
     <head>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #333; line-height: 1.5; }
-            .container { max-width: 900px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; }
-            .header { background: #1e293b; color: #fff; padding: 16px 20px; border-radius: 6px 6px 0 0; }
-            .header h2 { margin: 0; font-size: 20px; }
-            .content { padding: 20px 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
-            th { background: #f8fafc; text-align: left; padding: 10px 12px; border-bottom: 2px solid #cbd5e1; font-weight: 600; }
-            .summary { margin-top: 25px; padding: 15px; background: #f1f5f9; border-radius: 6px; font-size: 13px; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.5; margin: 0; padding: 10px; background-color: #f8fafc; }
+            .container { max-width: 760px; width: 100%; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+            .header { background: #1e293b; color: #ffffff; padding: 16px 20px; }
+            .header h2 { margin: 0; font-size: 18px; font-weight: 600; }
+            .content { padding: 18px 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+            th { background: #f8fafc; text-align: left; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; font-weight: 600; color: #475569; }
+            .summary { margin-top: 20px; padding: 12px 16px; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; font-size: 12px; color: #334155; }
         </style>
     </head>
     <body>
@@ -559,25 +564,40 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
                 <h2>🚨 Creative Yadley - Server 2 Migration Alert</h2>
             </div>
             <div class='content'>
-                <p>Hello Team,</p>
-                <p>The automated nameserver & DNS audit detected that <strong>{$count}</strong> website(s) have updated their nameservers or DNS destination away from Creative Yadley Server 2.</p>
+                <p style='margin-top: 0;'>Hello Team,</p>
+                <p>The automated DNS audit detected that <strong>{$count}</strong> website(s) have updated their nameservers or DNS destination away from Creative Yadley Server 2.</p>
                 
                 <table>
                     <thead>
                         <tr>
-                            <th>Domain</th>
-                            <th>cPanel User</th>
-                            <th>WHMCS Client</th>
-                            <th>WHMCS Status</th>
-                            <th>Nameservers</th>
-                            <th>Details</th>
-                            <th>Courtesy Ticket</th>
+                            <th style='width: 25%;'>Domain</th>
+                            <th style='width: 22%;'>WHMCS Client</th>
+                            <th style='width: 13%;'>Status</th>
+                            <th style='width: 26%;'>New Destination</th>
+                            <th style='width: 14%;'>Ticket</th>
                         </tr>
                     </thead>
                     <tbody>
                         {$rows}
                     </tbody>
                 </table>
+                
+                <div class='summary'>
+                    <strong>Audit Summary ({$dateStr}):</strong><br>
+                    • Total Accounts & Domains Audited: <strong>{$totalScanned}</strong><br>
+                    • Active on Server / Cloudflare / External A-Record: <strong>{$activeCount}</strong><br>
+                    • Confirmed Migrated Away: <strong>{$migratedCount}</strong><br>
+                    • Dead / Expired Domains: <strong>{$deadCount}</strong>
+                </div>
+                
+                <p style='font-size: 11px; color: #94a3b8; margin-top: 22px; margin-bottom: 0;'>
+                    Sent automatically by Creative Yadley Migration Scanner from <code>server2.creativeyadley.com</code>.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    ";
                 
                 <div class='summary'>
                     <strong>Audit Summary ({$dateStr}):</strong><br>
