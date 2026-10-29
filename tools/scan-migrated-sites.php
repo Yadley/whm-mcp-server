@@ -23,12 +23,13 @@
  *    - A record points to Server 2 (66.29.147.164): ACTIVE (External DNS pointing to us)
  *    - A record points elsewhere: MIGRATED_AWAY
  * 
- * Features:
+ * Daily Digest Features:
+ * - Subject Line: [Creative Yadley Migration Digest]
+ * - Action Required Section: Highlights migrated accounts that are still marked 'Active' in WHMCS (Security & Resource cleanup)
  * - Normalizes domains (handles trailing slashes like 'domain.com/' and URLs like 'https://...')
- * - Discovers domains from WHMCS (Active, Suspended, Cancelled) and server cPanel accounts
  * - Bypasses local DNS cache by querying public DNS resolvers (1.1.1.1 & 8.8.8.8)
  * - Sends authenticated SPF-compliant HTML alerts to info@creativeyadley.com
- * - Tracks state in migration_state.json to prevent duplicate notifications
+ * - Tracks state in migration_state.json to prevent duplicate ticket dispatches
  */
 
 cli_set_process_title("CreativeYadley-Migration-Scanner");
@@ -503,46 +504,131 @@ if (!$isDryRun && !$isNotifyOnly && !empty($newMigrations)) {
 
 // 7. Dispatch Notification Email to info@creativeyadley.com
 function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile) {
-    if (empty($newMigrations)) {
-        logMessage("No new migration events detected. Skipping admin alert email.", $logFile);
-        return;
-    }
-    
     $count = count($newMigrations);
-    $subject = "🚨 [Creative Yadley Alert] {$count} Website(s) Migrated Away from Server 2";
-    
-    $rows = "";
-    foreach ($newMigrations as $domain => $item) {
-        $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
-        $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
-        $whmcsStatusRaw = $item['status_in_whmcs'] ?? 'N/A';
-        $statusBadge = ($whmcsStatusRaw === 'Active') 
-            ? "<span style='background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Active</span>"
-            : "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
-        
-        $ticketStatus = !empty($item['courtesy_ticket_id']) 
-            ? "<span style='color: #16a34a; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"
-            : "<span style='color: #94a3b8;'>None</span>";
-        
-        $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
-        $destHtml = "<div style='font-weight: 500; color: #0f172a;'>{$ns}</div><div style='color: #64748b; font-size: 11px;'>IP: {$ipsStr}</div>";
-        
-        $rows .= "<tr>
-            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-all;'>
-                <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: #2563eb; text-decoration: none; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
-            </td>
-            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$client}</td>
-            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$statusBadge}</td>
-            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-word;'>{$destHtml}</td>
-            <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$ticketStatus}</td>
-        </tr>";
-    }
-    
     $totalScanned = count($auditResults);
     $activeCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'ACTIVE'));
     $migratedCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'MIGRATED_AWAY' || $x['status'] === 'A_RECORD_MIGRATED'));
     $deadCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'DEAD_OR_EXPIRED'));
-    $dateStr = date('Y-m-d H:i:s');
+    $dateStr = date('Y-m-d H:i:s T');
+    
+    // Identify accounts that migrated away but are STILL marked as 'Active' in WHMCS (Security & Resource cleanup)
+    $actionRequired = array_filter($auditResults, function($item) {
+        $isMigrated = ($item['status'] === 'MIGRATED_AWAY' || $item['status'] === 'A_RECORD_MIGRATED');
+        $isActiveInWhmcs = (($item['status_in_whmcs'] ?? '') === 'Active');
+        return $isMigrated && $isActiveInWhmcs;
+    });
+    $actionCount = count($actionRequired);
+
+    // Subject Line requested by user
+    $subject = "[Creative Yadley Migration Digest]";
+    
+    // 1. Newly Migrated Today Section
+    $newMigrationsHtml = "";
+    if ($count > 0) {
+        $newRows = "";
+        foreach ($newMigrations as $domain => $item) {
+            $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
+            $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
+            $whmcsStatusRaw = $item['status_in_whmcs'] ?? 'N/A';
+            $statusBadge = ($whmcsStatusRaw === 'Active') 
+                ? "<span style='background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Active</span>"
+                : "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
+            
+            $ticketStatus = !empty($item['courtesy_ticket_id']) 
+                ? "<span style='color: #16a34a; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"
+                : "<span style='color: #94a3b8;'>None</span>";
+            
+            $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
+            $destHtml = "<div style='font-weight: 500; color: #0f172a;'>{$ns}</div><div style='color: #64748b; font-size: 11px;'>IP: {$ipsStr}</div>";
+            
+            $newRows .= "<tr>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-all;'>
+                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: #2563eb; text-decoration: none; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
+                </td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$client}</td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$statusBadge}</td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-word;'>{$destHtml}</td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$ticketStatus}</td>
+            </tr>";
+        }
+        
+        $newMigrationsHtml = "
+        <div style='margin-top: 18px;'>
+            <h3 style='font-size: 14px; color: #b91c1c; margin: 0 0 8px 0;'>🚨 Newly Migrated in Last 24 Hours ({$count})</h3>
+            <table style='width: 100%; border-collapse: collapse; font-size: 12px;'>
+                <thead>
+                    <tr>
+                        <th style='width: 25%;'>Domain</th>
+                        <th style='width: 22%;'>WHMCS Client</th>
+                        <th style='width: 13%;'>Status</th>
+                        <th style='width: 26%;'>New Destination</th>
+                        <th style='width: 14%;'>Ticket</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {$newRows}
+                </tbody>
+            </table>
+        </div>";
+    } else {
+        $newMigrationsHtml = "
+        <div style='margin-top: 16px; padding: 12px 16px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; color: #065f46; font-size: 12px;'>
+            <strong>🟢 0 New Migrations Today:</strong> No new client website moves were detected in the last 24 hours.
+        </div>";
+    }
+
+    // 2. Action Required Section: Migrated Away But STILL Active in WHMCS
+    $actionRequiredHtml = "";
+    if ($actionCount > 0) {
+        $actionRows = "";
+        foreach ($actionRequired as $domain => $item) {
+            $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
+            $user = htmlspecialchars($item['user'] ?: 'N/A');
+            $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
+            $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
+            
+            $actionRows .= "<tr>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top; word-break: break-all;'>
+                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: #b91c1c; text-decoration: none; font-weight: 700;'>" . htmlspecialchars($domain) . "</a>
+                </td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top;'>{$client}</td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top;'>
+                    <span style='background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;'>ACTIVE in WHMCS</span>
+                </td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top; word-break: break-word;'>
+                    <div style='font-weight: 500; color: #0f172a;'>{$ns}</div>
+                    <div style='color: #64748b; font-size: 11px;'>IP: {$ipsStr}</div>
+                </td>
+                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top; color: #b91c1c; font-weight: 600;'>
+                    Cancel & Archive
+                </td>
+            </tr>";
+        }
+        
+        $actionRequiredHtml = "
+        <div style='margin-top: 24px; border: 1px solid #fecaca; border-radius: 6px; background: #fff5f5; padding: 16px;'>
+            <div style='display: flex; align-items: center; margin-bottom: 8px;'>
+                <h3 style='font-size: 14px; color: #991b1b; margin: 0;'>⚠️ Action Required: Migrated but Still Active in WHMCS ({$actionCount})</h3>
+            </div>
+            <p style='font-size: 12px; color: #7f1d1d; margin: 0 0 12px 0; line-height: 1.4;'>
+                These accounts have migrated their website away from Server 2, but their hosting service is <strong>still active in WHMCS</strong>. Keeping abandoned accounts active consumes cPanel licenses, backup quotas, and creates potential security vulnerabilities.
+            </p>
+            <table style='width: 100%; border-collapse: collapse; font-size: 12px; background: #ffffff; border-radius: 4px; overflow: hidden; border: 1px solid #fca5a5;'>
+                <thead>
+                    <tr style='background: #fee2e2;'>
+                        <th style='width: 25%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>Domain</th>
+                        <th style='width: 25%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>WHMCS Client</th>
+                        <th style='width: 16%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>WHMCS Status</th>
+                        <th style='width: 22%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>Pointing To</th>
+                        <th style='width: 12%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {$actionRows}
+                </tbody>
+            </table>
+        </div>";
+    }
     
     $htmlBody = "
     <html>
@@ -553,40 +639,58 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
             .header { background: #1e293b; color: #ffffff; padding: 16px 20px; }
             .header h2 { margin: 0; font-size: 18px; font-weight: 600; }
             .content { padding: 18px 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
             th { background: #f8fafc; text-align: left; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; font-weight: 600; color: #475569; }
-            .summary { margin-top: 20px; padding: 12px 16px; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; font-size: 12px; color: #334155; }
+            .summary { margin-top: 24px; padding: 14px 16px; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; font-size: 12px; color: #334155; }
+            .metric-box { display: inline-block; width: 18%; text-align: center; padding: 10px 4px; background: #f1f5f9; border-radius: 6px; margin-right: 1.5%; margin-bottom: 10px; vertical-align: top; }
+            .metric-val { font-size: 18px; font-weight: 700; color: #0f172a; }
+            .metric-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
         </style>
     </head>
     <body>
         <div class='container'>
             <div class='header'>
-                <h2>🚨 Creative Yadley - Server 2 Migration Alert</h2>
+                <h2>📊 Creative Yadley - Server 2 Migration Digest</h2>
             </div>
             <div class='content'>
-                <p style='margin-top: 0;'>Hello Team,</p>
-                <p>The automated DNS audit detected that <strong>{$count}</strong> website(s) have updated their nameservers or DNS destination away from Creative Yadley Server 2.</p>
+                <p style='margin-top: 0; margin-bottom: 14px; font-size: 13px; color: #475569;'>
+                    Automated domain & nameserver audit report for <strong>server2.creativeyadley.com</strong> ({$dateStr}).
+                </p>
                 
-                <table>
-                    <thead>
-                        <tr>
-                            <th style='width: 25%;'>Domain</th>
-                            <th style='width: 22%;'>WHMCS Client</th>
-                            <th style='width: 13%;'>Status</th>
-                            <th style='width: 26%;'>New Destination</th>
-                            <th style='width: 14%;'>Ticket</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {$rows}
-                    </tbody>
-                </table>
+                <!-- Metrics Bar -->
+                <div style='margin-bottom: 12px;'>
+                    <div class='metric-box'>
+                        <div class='metric-val'>{$totalScanned}</div>
+                        <div class='metric-lbl'>Total Audited</div>
+                    </div>
+                    <div class='metric-box'>
+                        <div class='metric-val' style='color: #16a34a;'>{$activeCount}</div>
+                        <div class='metric-lbl'>Active Here</div>
+                    </div>
+                    <div class='metric-box'>
+                        <div class='metric-val' style='color: #dc2626;'>{$actionCount}</div>
+                        <div class='metric-lbl'>Action Needed</div>
+                    </div>
+                    <div class='metric-box'>
+                        <div class='metric-val' style='color: #64748b;'>{$migratedCount}</div>
+                        <div class='metric-lbl'>All Migrated</div>
+                    </div>
+                    <div class='metric-box' style='margin-right: 0;'>
+                        <div class='metric-val' style='color: #94a3b8;'>{$deadCount}</div>
+                        <div class='metric-lbl'>Dead / Expired</div>
+                    </div>
+                </div>
+
+                {$actionRequiredHtml}
+
+                {$newMigrationsHtml}
                 
                 <div class='summary'>
                     <strong>Audit Summary ({$dateStr}):</strong><br>
-                    • Total Accounts & Domains Audited: <strong>{$totalScanned}</strong><br>
+                    • Total Accounts & Domains Monitored: <strong>{$totalScanned}</strong><br>
                     • Active on Server / Cloudflare / External A-Record: <strong>{$activeCount}</strong><br>
-                    • Confirmed Migrated Away: <strong>{$migratedCount}</strong><br>
+                    • ⚠️ Migrated Away but Still Active in WHMCS: <strong>{$actionCount}</strong><br>
+                    • Total Migrated Away (Active + Cancelled): <strong>{$migratedCount}</strong><br>
                     • Dead / Expired Domains: <strong>{$deadCount}</strong>
                 </div>
                 
@@ -606,15 +710,14 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
         "From: Creative Yadley Admin <{$fromEmail}>",
         "Reply-To: {$adminEmail}",
         "Return-Path: <{$fromEmail}>",
-        'X-Mailer: CreativeYadley-MigrationScanner/2.0'
+        'X-Mailer: CreativeYadley-MigrationScanner/2.1'
     ];
     
     if ($isDryRun) {
-        logMessage("[DRY RUN] Would send alert email to {$adminEmail} regarding {$count} migrated domain(s).", $logFile);
+        logMessage("[DRY RUN] Would send digest email to {$adminEmail} regarding {$count} new migrated domain(s) and {$actionCount} action item(s).", $logFile);
         return;
     }
     
-    // Pass -f parameter so envelope sender matches noreply@creativeyadley.com (SPF pass on Google Workspace)
     $sent = @mail($adminEmail, $subject, $htmlBody, implode("\r\n", $headers), "-f " . escapeshellarg($fromEmail));
     if ($sent) {
         logMessage("SUCCESS: Alert email sent to {$adminEmail} (From: {$fromEmail}).", $logFile);
