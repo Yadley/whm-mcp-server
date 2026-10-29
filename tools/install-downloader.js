@@ -25,7 +25,12 @@ if (!str_starts_with($file, 'whmcs_backup_') || !str_ends_with($file, '.sql.gz')
     die('Invalid file requested.');
 }
 
-$secret = $cc_encryption_hash ?? 'backup_salt_2026';
+if (empty($cc_encryption_hash)) {
+    http_response_code(500);
+    die('Server configuration error: encryption secret missing.');
+}
+
+$secret = $cc_encryption_hash;
 // Token valid for file
 $validToken = hash_hmac('sha256', $file, $secret);
 
@@ -40,15 +45,93 @@ if (!file_exists($fullPath)) {
     die('Backup file not found on server.');
 }
 
+$fileSize = filesize($fullPath);
+$start = 0;
+$end = $fileSize - 1;
+$isRange = false;
+
+if (isset($_SERVER['HTTP_RANGE'])) {
+    if (preg_match('/^bytes=(\\d*)-(\\d*)$/', $_SERVER['HTTP_RANGE'], $matches)) {
+        $rangeStart = $matches[1];
+        $rangeEnd = $matches[2];
+
+        if ($rangeStart === '' && $rangeEnd === '') {
+            http_response_code(416);
+            header("Content-Range: bytes */$fileSize");
+            exit;
+        }
+
+        if ($rangeStart === '') {
+            $suffix = (int)$rangeEnd;
+            if ($suffix === 0) {
+                http_response_code(416);
+                header("Content-Range: bytes */$fileSize");
+                exit;
+            }
+            $start = max(0, $fileSize - $suffix);
+            $end = $fileSize - 1;
+        } else {
+            $start = (int)$rangeStart;
+            if ($rangeEnd !== '') {
+                $end = (int)$rangeEnd;
+            }
+        }
+
+        if ($start > $end || $start >= $fileSize) {
+            http_response_code(416);
+            header("Content-Range: bytes */$fileSize");
+            exit;
+        }
+
+        if ($end >= $fileSize) {
+            $end = $fileSize - 1;
+        }
+
+        $isRange = true;
+    }
+}
+
+$length = $end - $start + 1;
+
 header('Content-Description: File Transfer');
 header('Content-Type: application/gzip');
 header('Content-Disposition: attachment; filename="' . $file . '"');
+header('Accept-Ranges: bytes');
 header('Expires: 0');
 header('Cache-Control: must-revalidate');
 header('Pragma: public');
-header('Content-Length: ' . filesize($fullPath));
 
-readfile($fullPath);
+if ($isRange) {
+    http_response_code(206);
+    header("Content-Range: bytes $start-$end/$fileSize");
+    header("Content-Length: $length");
+} else {
+    http_response_code(200);
+    header("Content-Length: $fileSize");
+}
+
+$fp = fopen($fullPath, 'rb');
+if (!$fp) {
+    http_response_code(500);
+    die('Cannot open file.');
+}
+
+fseek($fp, $start);
+$bytesRemaining = $length;
+$chunkSize = 8192;
+
+while ($bytesRemaining > 0 && !feof($fp)) {
+    $readSize = min($chunkSize, $bytesRemaining);
+    $data = fread($fp, $readSize);
+    if ($data === false) {
+        break;
+    }
+    echo $data;
+    $bytesRemaining -= strlen($data);
+    flush();
+}
+
+fclose($fp);
 exit;
 `;
 
@@ -66,4 +149,3 @@ exit;
 }
 
 main().catch(console.error);
-

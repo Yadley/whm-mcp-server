@@ -15,6 +15,8 @@ $backupDir = '/home/creativeyadley/backups/whmcs_db';
 $logFile = $backupDir . '/backup.log';
 $notifyEmail = 'info@creativeyadley.com';
 
+umask(0077);
+
 function logMsg($msg, $file) {
     $entry = "[" . date('Y-m-d H:i:s') . "] " . $msg . "\\n";
     echo $entry;
@@ -24,6 +26,7 @@ function logMsg($msg, $file) {
 if (!is_dir($backupDir)) {
     mkdir($backupDir, 0700, true);
 }
+chmod($backupDir, 0700);
 
 logMsg("Starting WHMCS Database Backup...", $logFile);
 
@@ -43,18 +46,21 @@ if (empty($db_name) || empty($db_username)) {
 $startTime = microtime(true);
 $timestamp = date('Ymd_His');
 $dateStr = date('Y-m-d');
-$timeUTC = date('Y-m-d H:i:s T');
-$timePHT = gmdate('Y-m-d H:i:s', time() + (8 * 3600)) . ' (10:00 AM PHT)';
+$dtUtc = new DateTime('now', new DateTimeZone('UTC'));
+$timeUTC = $dtUtc->format('Y-m-d H:i:s T');
+$dtPht = new DateTime('now', new DateTimeZone('Asia/Manila'));
+$timePHT = $dtPht->format('Y-m-d H:i:s T');
 $filename = "whmcs_backup_{$timestamp}.sql.gz";
 $targetPath = $backupDir . '/' . $filename;
 
-$cmd = sprintf(
+$pipeline = sprintf(
     '/usr/bin/mysqldump --single-transaction --quick --max-allowed-packet=512M -h %s -u %s %s | /usr/bin/gzip -c > %s',
     escapeshellarg($db_host ?: '127.0.0.1'),
     escapeshellarg($db_username),
     escapeshellarg($db_name),
     escapeshellarg($targetPath)
 );
+$cmd = '/bin/bash -o pipefail -c ' . escapeshellarg($pipeline);
 
 $descriptors = [
     0 => ['pipe', 'r'],
@@ -83,6 +89,9 @@ $exitCode = proc_close($proc);
 $duration = round(microtime(true) - $startTime, 2);
 
 if ($exitCode !== 0 || !file_exists($targetPath) || filesize($targetPath) === 0) {
+    if (file_exists($targetPath)) {
+        @unlink($targetPath);
+    }
     logMsg("ERROR: Backup failed with exit code $exitCode. Stderr: $stderr", $logFile);
     @mail($notifyEmail, "[Backup FAILED] WHMCS Database Backup - $dateStr", "Backup failed with exit code $exitCode.\\nStderr: $stderr");
     exit(1);
@@ -99,6 +108,9 @@ if (is_resource($testProc)) {
 }
 
 if ($testCode !== 0) {
+    if (file_exists($targetPath)) {
+        @unlink($targetPath);
+    }
     logMsg("ERROR: Backup file $filename failed integrity check!", $logFile);
     @mail($notifyEmail, "[Backup FAILED] WHMCS Database Backup - $dateStr", "Backup file $filename failed gzip integrity verification.");
     exit(1);
@@ -137,7 +149,12 @@ foreach ($files as $f) {
 logMsg("Retention check complete. Pruned $prunedCount old backup(s).", $logFile);
 
 // Generate secure 1-click download link
-$secret = $cc_encryption_hash ?? 'backup_salt_2026';
+if (empty($cc_encryption_hash)) {
+    logMsg("ERROR: cc_encryption_hash missing in configuration.php", $logFile);
+    @mail($notifyEmail, "[Backup FAILED] WHMCS Database Backup - $dateStr", "Encryption hash missing in configuration.php; aborting.");
+    exit(1);
+}
+$secret = $cc_encryption_hash;
 $token = hash_hmac('sha256', $filename, $secret);
 $systemUrl = rtrim($SystemURL ?? 'https://creativeyadley.com/clientarea', '/') . '/';
 $downloadUrl = $systemUrl . "get_db_backup.php?file=" . urlencode($filename) . "&token=" . $token;
@@ -195,4 +212,3 @@ logMsg("----------------------------------------------------------------", $logF
 }
 
 main().catch(console.error);
-

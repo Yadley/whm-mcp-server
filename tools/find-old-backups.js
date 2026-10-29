@@ -25,20 +25,21 @@ if (is_resource($proc)) {
     content: code
   });
 
-  const res = await axios.get('https://creativeyadley.com/clientarea/find_old_backups.php', {
-    httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
-  });
+  try {
+    const res = await axios.get('https://creativeyadley.com/clientarea/find_old_backups.php', {
+      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+    });
 
-  console.log(res.data);
-
-  await w.get('cpanel', {
-    cpanel_jsonapi_user: 'creativeyadley',
-    cpanel_jsonapi_apiversion: '3',
-    cpanel_jsonapi_module: 'Fileman',
-    cpanel_jsonapi_func: 'fileop',
-    op: 'unlink',
-    sourcefiles: 'public_html/clientarea/find_old_backups.php'
-  });
+    console.log(res.data);
+  } finally {
+    await w.get('cpanel', {
+      cpanel_jsonapi_user: 'creativeyadley',
+      cpanel_jsonapi_apiversion: '3',
+      cpanel_jsonapi_module: 'Fileman',
+      cpanel_jsonapi_func: 'fileop',
+      op: 'unlink',
+      sourcefiles: 'public_html/clientarea/find_old_backups.php'
+    });
+  }
 }
 main().catch(console.error);
-
