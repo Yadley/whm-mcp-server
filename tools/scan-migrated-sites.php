@@ -116,40 +116,94 @@ if ($pdo) {
         // Query tblhosting for Active, Suspended, and Cancelled accounts
         $stmt = $pdo->query("
             SELECT h.id as serviceid, h.userid, h.domain, h.username, h.domainstatus,
-                   c.firstname, c.lastname, c.email as client_email, c.companyname
+                   c.status as client_status, c.firstname, c.lastname, c.email as client_email, c.companyname
             FROM tblhosting h
             LEFT JOIN tblclients c ON c.id = h.userid
             WHERE h.domain IS NOT NULL AND h.domain != ''
+            ORDER BY h.id DESC
         ");
+
+        $domainServices = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $dom = cleanDomain($row['domain']);
-            if ($dom && !isset($targets[$dom])) {
-                $targets[$dom] = [
-                    'domain' => $dom,
-                    'user' => $row['username'],
-                    'serviceid' => $row['serviceid'],
-                    'userid' => $row['userid'],
-                    'client_name' => trim(($row['firstname'] ?? '') . ' ' . ($row['lastname'] ?? '')),
-                    'client_email' => $row['client_email'],
-                    'status_in_whmcs' => $row['domainstatus'],
-                    'source' => 'WHMCS Hosting'
-                ];
+            if (!$dom) continue;
+            $domainServices[$dom][] = $row;
+        }
+
+        foreach ($domainServices as $dom => $rows) {
+            // Determine the accurate status for this domain:
+            // 1. If any service row belongs to an Active client and is Active, that takes priority
+            // 2. If all clients associated with this domain are Closed in WHMCS, status is Closed
+            // 3. Otherwise, use the status from the latest service row, respecting client status
+            $activeRow = null;
+            $allClientsClosed = true;
+
+            foreach ($rows as $r) {
+                $cStatus = strtolower(trim($r['client_status'] ?? ''));
+                $sStatus = $r['domainstatus'];
+                if ($cStatus !== 'closed') {
+                    $allClientsClosed = false;
+                }
+                if ($cStatus === 'active' && $sStatus === 'Active' && !$activeRow) {
+                    $activeRow = $r;
+                }
             }
+
+            if ($allClientsClosed) {
+                $chosen = $rows[0];
+                $statusInWhmcs = 'Closed';
+            } elseif ($activeRow) {
+                $chosen = $activeRow;
+                $statusInWhmcs = 'Active';
+            } else {
+                $chosen = $rows[0]; // latest service
+                $cStatus = strtolower(trim($chosen['client_status'] ?? ''));
+                if ($cStatus === 'closed') {
+                    $statusInWhmcs = 'Closed';
+                } elseif ($cStatus === 'inactive') {
+                    $statusInWhmcs = 'Inactive';
+                } else {
+                    $statusInWhmcs = $chosen['domainstatus'];
+                }
+            }
+
+            $targets[$dom] = [
+                'domain' => $dom,
+                'user' => $chosen['username'],
+                'serviceid' => $chosen['serviceid'],
+                'userid' => $chosen['userid'],
+                'client_name' => trim(($chosen['firstname'] ?? '') . ' ' . ($chosen['lastname'] ?? '')),
+                'client_email' => $chosen['client_email'],
+                'client_status' => $chosen['client_status'] ?? 'Unknown',
+                'status_in_whmcs' => $statusInWhmcs,
+                'source' => 'WHMCS Hosting'
+            ];
         }
         logMessage("Loaded " . count($targets) . " unique domains from WHMCS hosting services.", $logFile);
         
         // Also load registered domains from tbldomains
         $stmt2 = $pdo->query("
             SELECT d.id as domainid, d.userid, d.domain, d.status,
-                   c.firstname, c.lastname, c.email as client_email
+                   c.status as client_status, c.firstname, c.lastname, c.email as client_email
             FROM tbldomains d
             LEFT JOIN tblclients c ON c.id = d.userid
             WHERE d.domain IS NOT NULL AND d.domain != ''
+            ORDER BY d.id DESC
         ");
         $addedFromDomains = 0;
         while ($row = $stmt2->fetch(PDO::FETCH_ASSOC)) {
             $dom = cleanDomain($row['domain']);
             if ($dom && !isset($targets[$dom])) {
+                $isClientClosed = (strtolower(trim($row['client_status'] ?? '')) === 'closed');
+                $isClientInactive = (strtolower(trim($row['client_status'] ?? '')) === 'inactive');
+                if ($isClientClosed) {
+                    $statusInWhmcs = 'Closed';
+                } elseif ($isClientInactive) {
+                    $statusInWhmcs = 'Inactive';
+                } else {
+                    $statusInWhmcs = $row['status'];
+                }
+
                 $targets[$dom] = [
                     'domain' => $dom,
                     'user' => '',
@@ -157,7 +211,8 @@ if ($pdo) {
                     'userid' => $row['userid'],
                     'client_name' => trim(($row['firstname'] ?? '') . ' ' . ($row['lastname'] ?? '')),
                     'client_email' => $row['client_email'],
-                    'status_in_whmcs' => $row['status'],
+                    'client_status' => $row['client_status'] ?? 'Unknown',
+                    'status_in_whmcs' => $statusInWhmcs,
                     'source' => 'WHMCS Registered Domain'
                 ];
                 $addedFromDomains++;
@@ -384,6 +439,7 @@ foreach ($targets as $domain => $meta) {
         'userid' => $meta['userid'],
         'client_name' => $meta['client_name'],
         'client_email' => $meta['client_email'],
+        'client_status' => $meta['client_status'] ?? 'Unknown',
         'status_in_whmcs' => $meta['status_in_whmcs'],
         'status' => $status,
         'details' => $details,
@@ -429,9 +485,11 @@ function openWhmcsCourtesyTicket($pdo, $meta, $entry, $isDryRun, $logFile) {
         return null;
     }
     
-    // Only open tickets for Active services in WHMCS (don't ticket clients who already cancelled)
-    if (($meta['status_in_whmcs'] ?? '') === 'Cancelled' || ($meta['status_in_whmcs'] ?? '') === 'Terminated') {
-        logMessage("Skipping courtesy ticket for {$domain}: Account is already {$meta['status_in_whmcs']} in WHMCS.", $logFile);
+    // Only open tickets for Active services in WHMCS (don't ticket clients who already cancelled or closed)
+    $whmcsStatus = $meta['status_in_whmcs'] ?? '';
+    $clientStatus = strtolower(trim($meta['client_status'] ?? ''));
+    if ($whmcsStatus === 'Cancelled' || $whmcsStatus === 'Terminated' || $whmcsStatus === 'Closed' || $clientStatus === 'closed') {
+        logMessage("Skipping courtesy ticket for {$domain}: Account is already {$whmcsStatus}/Closed in WHMCS.", $logFile);
         return null;
     }
     
@@ -506,7 +564,7 @@ if (!$isDryRun && !$isNotifyOnly && !empty($newMigrations)) {
 function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile) {
     $count = count($newMigrations);
     $totalScanned = count($auditResults);
-    $activeCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'ACTIVE'));
+    $activeCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'ACTIVE' && ($x['status_in_whmcs'] ?? '') !== 'Closed'));
     $migratedCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'MIGRATED_AWAY' || $x['status'] === 'A_RECORD_MIGRATED'));
     $deadCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'DEAD_OR_EXPIRED'));
     $dateStr = date('Y-m-d H:i:s T');
@@ -515,7 +573,8 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     $actionRequired = array_filter($auditResults, function($item) {
         $isMigrated = ($item['status'] === 'MIGRATED_AWAY' || $item['status'] === 'A_RECORD_MIGRATED');
         $isActiveInWhmcs = (($item['status_in_whmcs'] ?? '') === 'Active');
-        return $isMigrated && $isActiveInWhmcs;
+        $isClientClosed = (strtolower(trim($item['client_status'] ?? '')) === 'closed');
+        return $isMigrated && $isActiveInWhmcs && !$isClientClosed;
     });
     $actionCount = count($actionRequired);
 
@@ -530,9 +589,15 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
             $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
             $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
             $whmcsStatusRaw = $item['status_in_whmcs'] ?? 'N/A';
-            $statusBadge = ($whmcsStatusRaw === 'Active') 
-                ? "<span style='background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Active</span>"
-                : "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
+            if ($whmcsStatusRaw === 'Active') {
+                $statusBadge = "<span style='background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Active</span>";
+            } elseif ($whmcsStatusRaw === 'Closed') {
+                $statusBadge = "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Closed</span>";
+            } elseif ($whmcsStatusRaw === 'Inactive') {
+                $statusBadge = "<span style='background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>Inactive</span>";
+            } else {
+                $statusBadge = "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
+            }
             
             $ticketStatus = !empty($item['courtesy_ticket_id']) 
                 ? "<span style='color: #16a34a; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"

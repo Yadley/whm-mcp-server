@@ -31,8 +31,18 @@ async function main() {
   console.log('   Uploaded successfully!');
 
   console.log('2. Running dry-run test on Server 2...');
+  const crypto = require('crypto');
+  const authToken = crypto.randomBytes(16).toString('hex');
+  const tempFilename = `test_scanner_${crypto.randomBytes(8).toString('hex')}.php`;
+
   const runnerCode = `<?php
 header('Content-Type: text/plain');
+
+if (($_GET['auth'] ?? '') !== '${authToken}') {
+    http_response_code(403);
+    die("Forbidden\\n");
+}
+
 $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
 $proc = proc_open('/usr/local/bin/php /home/creativeyadley/bin/scan_migrated_sites.php --dry-run', $descriptors, $pipes);
 if (is_resource($proc)) {
@@ -50,14 +60,13 @@ if (is_resource($proc)) {
     cpanel_jsonapi_module: 'Fileman',
     cpanel_jsonapi_func: 'save_file_content',
     dir: 'public_html/clientarea',
-    file: 'test_migration_scanner.php',
+    file: tempFilename,
     content: runnerCode
   });
 
   try {
-    const res = await axios.get('https://creativeyadley.com/clientarea/test_migration_scanner.php', {
-      timeout: 60000,
-      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+    const res = await axios.get(`https://creativeyadley.com/clientarea/${tempFilename}?auth=${authToken}`, {
+      timeout: 120000
     });
     console.log('\n--- Output from Server 2 Test Run ---\n');
     console.log(res.data);
@@ -71,7 +80,7 @@ if (is_resource($proc)) {
       cpanel_jsonapi_module: 'Fileman',
       cpanel_jsonapi_func: 'fileop',
       op: 'unlink',
-      sourcefiles: 'public_html/clientarea/test_migration_scanner.php'
+      sourcefiles: `public_html/clientarea/${tempFilename}`
     });
   }
 
