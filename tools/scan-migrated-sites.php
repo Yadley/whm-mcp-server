@@ -34,11 +34,12 @@
 
 cli_set_process_title("CreativeYadley-Migration-Scanner");
 
-$options = getopt("", ["dry-run", "notify-only", "force-ticket", "domain::"]);
+$options = getopt("", ["dry-run", "notify-only", "force-ticket", "domain::", "test-client::"]);
 $isDryRun = isset($options['dry-run']);
 $isNotifyOnly = isset($options['notify-only']);
 $forceTicket = isset($options['force-ticket']);
 $filterDomain = isset($options['domain']) ? strtolower(trim($options['domain'])) : null;
+$testClientId = isset($options['test-client']) ? intval($options['test-client']) : null;
 
 $adminEmail = 'info@creativeyadley.com';
 $fromEmail = 'noreply@creativeyadley.com';
@@ -493,7 +494,7 @@ function openWhmcsCourtesyTicket($pdo, $meta, $entry, $isDryRun, $logFile) {
         return null;
     }
     
-    $subject = "Important: Nameserver update detected for {$domain}";
+    $subject = "Important: Nameserver Update Detected for {$domain}";
     $message = "Dear {$clientName},\n\n"
              . "Our automated monitoring system recently detected that the nameservers or DNS destination for your domain {$domain} were updated to point away from our servers:\n"
              . "Nameservers: {$nsString}\n\n"
@@ -561,7 +562,7 @@ if (!$isDryRun && !$isNotifyOnly && !empty($newMigrations)) {
 }
 
 // 7. Dispatch Notification Email to info@creativeyadley.com
-function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile) {
+function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile, $testClientId = null, $whmcsPath = null, $pdo = null) {
     $count = count($newMigrations);
     $totalScanned = count($auditResults);
     $activeCount = count(array_filter($auditResults, fn($x) => $x['status'] === 'ACTIVE' && ($x['status_in_whmcs'] ?? '') !== 'Closed'));
@@ -578,9 +579,29 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     });
     $actionCount = count($actionRequired);
 
-    // Subject Line requested by user
-    $subject = "[Creative Yadley Migration Digest]";
+    $subject = "[Creative Yadley Migration Digest] Server 2 Audit Report - " . date('Y-m-d');
     
+    // Design System Tokens (v2.3.0 / Email Design System 1.0)
+    $cInk = '#08090B';
+    $cBody = '#434745';
+    $cMuted = '#5E6463';
+    $cHair = '#D2D6D0';
+    $cPanel = '#F4F5F2';
+    $cPage = '#ECEEE9';
+    $cLime = '#AFE139';
+    $cLimeInk = '#0B0D0E';
+    $cWhite = '#FFFFFF';
+    $cAlertBg = '#FEF2F2';
+    $cAlertBorder = '#FECACA';
+    $cAlertInk = '#991B1B';
+    $cSuccessBg = '#F0FDF4';
+    $cSuccessBorder = '#BBF7D0';
+    $cSuccessInk = '#166534';
+
+    $fDisplay = "'Plus Jakarta Sans','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+    $fSans = "'Nunito Sans','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+    $fMono = "'JetBrains Mono',Consolas,'Courier New',monospace";
+
     // 1. Newly Migrated Today Section
     $newMigrationsHtml = "";
     if ($count > 0) {
@@ -590,44 +611,44 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
             $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
             $whmcsStatusRaw = $item['status_in_whmcs'] ?? 'N/A';
             if ($whmcsStatusRaw === 'Active') {
-                $statusBadge = "<span style='background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Active</span>";
+                $statusBadge = "<span style='background: {$cAlertBg}; color: {$cAlertInk}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;'>Active</span>";
             } elseif ($whmcsStatusRaw === 'Closed') {
-                $statusBadge = "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Closed</span>";
-            } elseif ($whmcsStatusRaw === 'Inactive') {
-                $statusBadge = "<span style='background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>Inactive</span>";
+                $statusBadge = "<span style='background: {$cPanel}; color: {$cMuted}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Closed</span>";
             } else {
-                $statusBadge = "<span style='background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
+                $statusBadge = "<span style='background: {$cPanel}; color: {$cMuted}; padding: 3px 8px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
             }
             
             $ticketStatus = !empty($item['courtesy_ticket_id']) 
-                ? "<span style='color: #16a34a; font-weight: bold;'>Ticket #{$item['courtesy_ticket_id']}</span>"
-                : "<span style='color: #94a3b8;'>None</span>";
+                ? "<span style='color: #166534; font-weight: 700;'>Ticket #{$item['courtesy_ticket_id']}</span>"
+                : "<span style='color: {$cMuted};'>None</span>";
             
             $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
-            $destHtml = "<div style='font-weight: 500; color: #0f172a;'>{$ns}</div><div style='color: #64748b; font-size: 11px;'>IP: {$ipsStr}</div>";
+            $destHtml = "<div style='font-weight: 600; color: {$cInk};'>{$ns}</div><div style='color: {$cMuted}; font-size: 12px; margin-top: 2px;'>IP: {$ipsStr}</div>";
             
             $newRows .= "<tr>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-all;'>
-                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: #2563eb; text-decoration: none; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-all;'>
+                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: {$cInk}; text-decoration: underline; text-decoration-color: {$cLime}; text-underline-offset: 3px; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
                 </td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$client}</td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$statusBadge}</td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; word-break: break-word;'>{$destHtml}</td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top;'>{$ticketStatus}</td>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 14px; color: {$cBody};'>{$client}</td>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top;'>{$statusBadge}</td>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-word;'>{$destHtml}</td>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px;'>{$ticketStatus}</td>
             </tr>";
         }
         
         $newMigrationsHtml = "
-        <div style='margin-top: 18px;'>
-            <h3 style='font-size: 14px; color: #b91c1c; margin: 0 0 8px 0;'>🚨 Newly Migrated in Last 24 Hours ({$count})</h3>
-            <table style='width: 100%; border-collapse: collapse; font-size: 12px;'>
+        <div style='margin-top: 24px; border: 1px solid {$cHair}; border-radius: 14px; background: {$cPanel}; padding: 18px 20px;'>
+            <p style='margin: 0 0 10px; font-family: {$fDisplay}; font-size: 13px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; color: {$cAlertInk};'>
+                Newly Migrated in Last 24 Hours ({$count})
+            </p>
+            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='background: {$cWhite}; border: 1px solid {$cHair}; border-radius: 10px; overflow: hidden; border-collapse: collapse;'>
                 <thead>
-                    <tr>
-                        <th style='width: 25%;'>Domain</th>
-                        <th style='width: 22%;'>WHMCS Client</th>
-                        <th style='width: 13%;'>Status</th>
-                        <th style='width: 26%;'>New Destination</th>
-                        <th style='width: 14%;'>Ticket</th>
+                    <tr style='background: {$cPanel};'>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>Domain</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>WHMCS Client</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>Status</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>New Destination</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>Ticket</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -637,9 +658,13 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
         </div>";
     } else {
         $newMigrationsHtml = "
-        <div style='margin-top: 16px; padding: 12px 16px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; color: #065f46; font-size: 12px;'>
-            <strong>🟢 0 New Migrations Today:</strong> No new client website moves were detected in the last 24 hours.
-        </div>";
+        <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='margin: 0 0 24px; background: {$cSuccessBg}; border: 1px solid {$cSuccessBorder}; border-radius: 12px;'>
+            <tr>
+                <td style='padding: 14px 18px; font-family: {$fSans}; font-size: 14px; line-height: 1.55; color: {$cSuccessInk};'>
+                    <strong>0 New Migrations Detected Today:</strong> No client website DNS changes were detected in the last 24-hour cycle.
+                </td>
+            </tr>
+        </table>";
     }
 
     // 2. Action Required Section: Migrated Away But STILL Active in WHMCS
@@ -648,44 +673,43 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
         $actionRows = "";
         foreach ($actionRequired as $domain => $item) {
             $client = htmlspecialchars($item['client_name'] . ($item['userid'] ? " (#{$item['userid']})" : ""));
-            $user = htmlspecialchars($item['user'] ?: 'N/A');
             $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
             $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
             
             $actionRows .= "<tr>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top; word-break: break-all;'>
-                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: #b91c1c; text-decoration: none; font-weight: 700;'>" . htmlspecialchars($domain) . "</a>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-all;'>
+                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: {$cInk}; text-decoration: underline; text-decoration-color: {$cLime}; text-underline-offset: 3px; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
                 </td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top;'>{$client}</td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top;'>
-                    <span style='background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;'>ACTIVE in WHMCS</span>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 14px; color: {$cBody};'>{$client}</td>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top;'>
+                    <span style='background: {$cAlertBg}; color: {$cAlertInk}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px;'>ACTIVE IN WHMCS</span>
                 </td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top; word-break: break-word;'>
-                    <div style='font-weight: 500; color: #0f172a;'>{$ns}</div>
-                    <div style='color: #64748b; font-size: 11px;'>IP: {$ipsStr}</div>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; color: {$cBody}; word-break: break-word;'>
+                    <div style='font-weight: 600; color: {$cInk};'>{$ns}</div>
+                    <div style='color: {$cMuted}; font-size: 12px; margin-top: 2px;'>IP: {$ipsStr}</div>
                 </td>
-                <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; vertical-align: top; color: #b91c1c; font-weight: 600;'>
+                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; font-weight: 700; color: {$cAlertInk};'>
                     Cancel & Archive
                 </td>
             </tr>";
         }
         
         $actionRequiredHtml = "
-        <div style='margin-top: 24px; border: 1px solid #fecaca; border-radius: 6px; background: #fff5f5; padding: 16px;'>
-            <div style='display: flex; align-items: center; margin-bottom: 8px;'>
-                <h3 style='font-size: 14px; color: #991b1b; margin: 0;'>⚠️ Action Required: Migrated but Still Active in WHMCS ({$actionCount})</h3>
-            </div>
-            <p style='font-size: 12px; color: #7f1d1d; margin: 0 0 12px 0; line-height: 1.4;'>
-                These accounts have migrated their website away from Server 2, but their hosting service is <strong>still active in WHMCS</strong>. Keeping abandoned accounts active consumes cPanel licenses, backup quotas, and creates potential security vulnerabilities.
+        <div style='margin: 0 0 24px; border: 1px solid {$cAlertBorder}; border-radius: 14px; background: #FFFBFB; padding: 18px 20px;'>
+            <p style='margin: 0 0 6px; font-family: {$fDisplay}; font-size: 13px; line-height: 1.4; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: {$cAlertInk};'>
+                Action Required: Migrated but Active in WHMCS ({$actionCount})
             </p>
-            <table style='width: 100%; border-collapse: collapse; font-size: 12px; background: #ffffff; border-radius: 4px; overflow: hidden; border: 1px solid #fca5a5;'>
+            <p style='margin: 0 0 16px; font-family: {$fSans}; font-size: 14px; line-height: 1.55; color: {$cBody};'>
+                The following client domains have migrated away to external nameservers, but their hosting service remains marked <strong>Active</strong> in WHMCS. Keeping migrated accounts active consumes server quotas and cPanel licenses.
+            </p>
+            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='background: {$cWhite}; border: 1px solid {$cAlertBorder}; border-radius: 10px; overflow: hidden; border-collapse: collapse;'>
                 <thead>
-                    <tr style='background: #fee2e2;'>
-                        <th style='width: 25%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>Domain</th>
-                        <th style='width: 25%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>WHMCS Client</th>
-                        <th style='width: 16%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>WHMCS Status</th>
-                        <th style='width: 22%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>Pointing To</th>
-                        <th style='width: 12%; text-align: left; padding: 8px 10px; color: #7f1d1d;'>Action</th>
+                    <tr style='background: #FEE2E2;'>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Domain</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>WHMCS Client</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Status</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Destination</th>
+                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -694,79 +718,129 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
             </table>
         </div>";
     }
-    
-    $htmlBody = "
-    <html>
-    <head>
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.5; margin: 0; padding: 10px; background-color: #f8fafc; }
-            .container { max-width: 760px; width: 100%; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
-            .header { background: #1e293b; color: #ffffff; padding: 16px 20px; }
-            .header h2 { margin: 0; font-size: 18px; font-weight: 600; }
-            .content { padding: 18px 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
-            th { background: #f8fafc; text-align: left; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; font-weight: 600; color: #475569; }
-            .summary { margin-top: 24px; padding: 14px 16px; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; font-size: 12px; color: #334155; }
-            .metric-box { display: inline-block; width: 18%; text-align: center; padding: 10px 4px; background: #f1f5f9; border-radius: 6px; margin-right: 1.5%; margin-bottom: 10px; vertical-align: top; }
-            .metric-val { font-size: 18px; font-weight: 700; color: #0f172a; }
-            .metric-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
-        </style>
-    </head>
-    <body>
-        <div class='container'>
-            <div class='header'>
-                <h2>📊 Creative Yadley - Server 2 Migration Digest</h2>
-            </div>
-            <div class='content'>
-                <p style='margin-top: 0; margin-bottom: 14px; font-size: 13px; color: #475569;'>
-                    Automated domain & nameserver audit report for <strong>server2.creativeyadley.com</strong> ({$dateStr}).
-                </p>
-                
-                <!-- Metrics Bar -->
-                <div style='margin-bottom: 12px;'>
-                    <div class='metric-box'>
-                        <div class='metric-val'>{$totalScanned}</div>
-                        <div class='metric-lbl'>Total Audited</div>
-                    </div>
-                    <div class='metric-box'>
-                        <div class='metric-val' style='color: #16a34a;'>{$activeCount}</div>
-                        <div class='metric-lbl'>Active Here</div>
-                    </div>
-                    <div class='metric-box'>
-                        <div class='metric-val' style='color: #dc2626;'>{$actionCount}</div>
-                        <div class='metric-lbl'>Action Needed</div>
-                    </div>
-                    <div class='metric-box'>
-                        <div class='metric-val' style='color: #64748b;'>{$migratedCount}</div>
-                        <div class='metric-lbl'>All Migrated</div>
-                    </div>
-                    <div class='metric-box' style='margin-right: 0;'>
-                        <div class='metric-val' style='color: #94a3b8;'>{$deadCount}</div>
-                        <div class='metric-lbl'>Dead / Expired</div>
-                    </div>
-                </div>
 
-                {$actionRequiredHtml}
+    $metricsHtml = "
+    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='margin: 0 0 24px;'>
+      <tr>
+        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
+          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
+            <tr><td>
+              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cInk}; line-height: 1;'>{$totalScanned}</div>
+              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Total Audited</div>
+            </td></tr>
+          </table>
+        </td>
+        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
+          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
+            <tr><td>
+              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: #166534; line-height: 1;'>{$activeCount}</div>
+              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Active Here</div>
+            </td></tr>
+          </table>
+        </td>
+        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
+          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
+            <tr><td>
+              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cAlertInk}; line-height: 1;'>{$actionCount}</div>
+              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Action Needed</div>
+            </td></tr>
+          </table>
+        </td>
+        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
+          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
+            <tr><td>
+              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cBody}; line-height: 1;'>{$migratedCount}</div>
+              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>All Migrated</div>
+            </td></tr>
+          </table>
+        </td>
+        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
+          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
+            <tr><td>
+              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cMuted}; line-height: 1;'>{$deadCount}</div>
+              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Expired / Other</div>
+            </td></tr>
+          </table>
+        </td>
+      </tr>
+    </table>";
 
-                {$newMigrationsHtml}
-                
-                <div class='summary'>
-                    <strong>Audit Summary ({$dateStr}):</strong><br>
-                    • Total Accounts & Domains Monitored: <strong>{$totalScanned}</strong><br>
-                    • Active on Server / Cloudflare / External A-Record: <strong>{$activeCount}</strong><br>
-                    • ⚠️ Migrated Away but Still Active in WHMCS: <strong>{$actionCount}</strong><br>
-                    • Total Migrated Away (Active + Cancelled): <strong>{$migratedCount}</strong><br>
-                    • Dead / Expired Domains: <strong>{$deadCount}</strong>
-                </div>
-                
-                <p style='font-size: 11px; color: #94a3b8; margin-top: 22px; margin-bottom: 0;'>
-                    Sent automatically by Creative Yadley Migration Scanner from <code>server2.creativeyadley.com</code>.
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-    ";
+    $ctaUrl = 'https://creativeyadley.com/clientarea/admin/clients.php';
+    $ctaLabel = 'Review Migrated Accounts';
+
+    $ctaBlock = "
+    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
+      <tr><td height='24' style='height:24px;line-height:24px;font-size:0;'>&nbsp;</td></tr>
+      <tr>
+        <td align='left'>
+          <!--[if mso]>
+          <v:roundrect xmlns:v='urn:schemas-microsoft-com:vml' xmlns:w='urn:schemas-microsoft-com:office:word' href='{$ctaUrl}' style='height:54px;v-text-anchor:middle;width:280px;' arcsize='50%' fillcolor='{$cLime}' stroke='f'>
+            <w:anchorlock/>
+            <center style='color:{$cLimeInk};font-family:Arial,sans-serif;font-size:16px;font-weight:bold;'>{$ctaLabel}</center>
+          </v:roundrect>
+          <![endif]-->
+          <!--[if !mso]><!-->
+          <a href='{$ctaUrl}' class='cy-btn' style='display:inline-block;padding:18px 34px;font-family:{$fDisplay};font-size:16px;line-height:1;font-weight:700;color:{$cLimeInk};background:{$cLime};border:1px solid {$cLime};text-decoration:none;border-radius:999px;'>{$ctaLabel}</a>
+          <!--<![endif]-->
+        </td>
+      </tr>
+      <tr><td height='28' style='height:28px;line-height:28px;font-size:0;'>&nbsp;</td></tr>
+    </table>";
+
+    $htmlBody = "<!doctype html>
+<html xmlns='http://www.w3.org/1999/xhtml' xmlns:v='urn:schemas-microsoft-com:vml' xmlns:o='urn:schemas-microsoft-com:office:office' lang='en' dir='ltr'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<meta name='color-scheme' content='light'>
+<meta name='supported-color-schemes' content='light'>
+<title>Creative Yadley Migration Digest</title>
+<style type='text/css'>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Nunito+Sans:wght@400;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+  html,body{margin:0!important;padding:0!important;width:100%!important;}
+  table{border-collapse:collapse;}
+  img{-ms-interpolation-mode:bicubic;}
+  a{text-decoration:none;}
+  @media only screen and (max-width:620px){
+    .cy-shell{width:100%!important;}
+    .cy-px{padding-left:24px!important;padding-right:24px!important;}
+    .cy-h1{font-size:22px!important;line-height:1.25!important;}
+    .cy-btn{display:block!important;text-align:center!important;padding:18px 24px!important;}
+    .cy-metric-cell{display:block!important;width:100%!important;margin-bottom:8px!important;}
+  }
+</style>
+</head>
+<body style='margin:0;padding:0;background:{$cPage};-webkit-text-size-adjust:100%;'>
+<div style='display:none;font-size:1px;color:{$cPage};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;'>Creative Yadley Migration Digest - Server 2 Audit Report</div>
+<table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' bgcolor='{$cPage}' style='background:{$cPage};'>
+  <tr>
+    <td align='center' style='padding:24px 12px;'>
+      <table role='presentation' width='600' cellpadding='0' cellspacing='0' border='0' class='cy-shell' style='width:600px;max-width:600px;background:{$cWhite};border-radius:16px;overflow:hidden;'>
+        <!-- Internal Admin Content-Only Fragment: No Hero, No Logo, No Footer -->
+        <tr>
+          <td class='cy-px' bgcolor='{$cWhite}' style='background:{$cWhite};padding:40px 40px 32px;'>
+            <p style='margin:0 0 10px;font-family:{$fDisplay};font-size:12px;line-height:1.4;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:{$cMuted};'>SERVER 2 MONITORING</p>
+            <h1 class='cy-h1' style='margin:0 0 14px;font-family:{$fDisplay};font-size:24px;line-height:1.22;letter-spacing:-0.4px;font-weight:700;color:{$cInk};'>Creative Yadley Migration Digest</h1>
+            <p style='margin:0 0 20px;font-family:{$fSans};font-size:15px;line-height:1.55;color:{$cBody};'>
+              Automated DNS and nameserver audit report for server2.creativeyadley.com ({$dateStr}). Monitored client accounts, external routing changes, and recommended service cleanups are detailed below.
+            </p>
+            
+            {$metricsHtml}
+            {$actionRequiredHtml}
+            {$newMigrationsHtml}
+            {$ctaBlock}
+
+            <p style='margin:20px 0 0;font-family:{$fSans};font-size:12px;line-height:1.6;color:{$cMuted};border-top:1px solid {$cHair};padding-top:16px;'>
+              Internal studio audit automation. Not a client message. &middot; <a href='https://creativeyadley.com/clientarea/admin/' style='color:{$cMuted};text-decoration:underline;'>Admin Area</a> &middot; server2.creativeyadley.com
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>";
     
     // Authenticated SPF-aligned headers
     $headers = [
@@ -775,11 +849,45 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
         "From: Creative Yadley Admin <{$fromEmail}>",
         "Reply-To: {$adminEmail}",
         "Return-Path: <{$fromEmail}>",
-        'X-Mailer: CreativeYadley-MigrationScanner/2.1'
+        'X-Mailer: CreativeYadley-MigrationScanner/2.3.0'
     ];
     
     if ($isDryRun) {
-        logMessage("[DRY RUN] Would send digest email to {$adminEmail} regarding {$count} new migrated domain(s) and {$actionCount} action item(s).", $logFile);
+        logMessage("[DRY RUN] Would send digest email regarding {$count} new migrated domain(s) and {$actionCount} action item(s).", $logFile);
+        return;
+    }
+
+    if ($testClientId) {
+        logMessage("Dispatching test digest email to Client #{$testClientId}...", $logFile);
+        if ($whmcsPath && file_exists($whmcsPath . '/init.php')) {
+            require_once $whmcsPath . '/init.php';
+            if (function_exists('localAPI')) {
+                $apiRes = localAPI('SendEmail', [
+                    'id' => $testClientId,
+                    'customtype' => 'general',
+                    'customsubject' => $subject,
+                    'custommessage' => '{literal}' . $htmlBody . '{/literal}'
+                ]);
+                logMessage("localAPI SendEmail result: " . json_encode($apiRes), $logFile);
+            }
+        }
+        // Also log to mod_cy_studio_automations
+        try {
+            if ($pdo) {
+                $cStmt = $pdo->prepare("SELECT email FROM tblclients WHERE id = :id");
+                $cStmt->execute([':id' => $testClientId]);
+                $clientEmail = $cStmt->fetchColumn() ?: 'tinasheyadley@outlook.com';
+
+                $aStmt = $pdo->prepare("INSERT INTO mod_cy_studio_automations (booking_code, recipient_email, template_filename, template_label, status, created_at) VALUES (:code, :email, 'server-migration-digest', 'Creative Yadley Migration Digest', 'Sent', NOW())");
+                $aStmt->execute([
+                    ':code' => "MIGR-" . date('YmdHi'),
+                    ':email' => $clientEmail
+                ]);
+                logMessage("Logged to mod_cy_studio_automations successfully.", $logFile);
+            }
+        } catch (Throwable $e) {
+            logMessage("Notice: mod_cy_studio_automations logging error: " . $e->getMessage(), $logFile);
+        }
         return;
     }
     
@@ -791,7 +899,7 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     }
 }
 
-sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile);
+sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile, $testClientId, $whmcsPath, $pdo);
 
 // 8. Console Summary Output
 $migratedList = array_filter($auditResults, fn($x) => $x['status'] === 'MIGRATED_AWAY' || $x['status'] === 'A_RECORD_MIGRATED');
