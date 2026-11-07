@@ -16,20 +16,18 @@ $pdo = new PDO("mysql:host=" . ($db_host ?: '127.0.0.1') . ";port=" . ($db_port 
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
 ]);
 
-$stmt = $pdo->query("SELECT id, userid, \`to\`, \`date\`, subject, message FROM tblemails WHERE id IN (21736, 21737) ORDER BY id ASC");
+$stmt = $pdo->query("SELECT id, userid, \`to\`, \`date\`, subject, message FROM tblemails WHERE id IN (21738, 21740) ORDER BY id ASC");
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $out = [];
 foreach ($rows as $r) {
-    preg_match('/<a [^>]*href=[\'\"]([^\'\"]+)[\'\"][^>]*class=[\'\"]cy-btn[\'\"][^>]*>(.*?)<\\/a>/is', $r['message'], $btnMatch);
     $out[] = [
         'id' => $r['id'],
         'subject' => $r['subject'],
-        'button_label' => $btnMatch[2] ?? 'NOT FOUND',
-        'button_url' => $btnMatch[1] ?? 'NOT FOUND',
-        'has_hero' => strpos($r['message'], 'hero-') !== false,
-        'has_lockup' => strpos($r['message'], 'cy-lockup') !== false,
-        'has_footer_mark' => strpos($r['message'], 'cy-mark') !== false,
+        'has_lime_bg' => (strpos($r['message'], 'background-color:#AFE139') !== false || strpos($r['message'], 'background-color: #AFE139') !== false),
+        'has_2x2_grid' => (strpos($r['message'], 'cy-col') !== false),
+        'has_notice_padding' => (strpos($r['message'], 'padding: 20px 24px') !== false || strpos($r['message'], 'padding:20px 24px') !== false),
+        'br_count' => substr_count($r['message'], '<br />'),
         'message_len' => strlen($r['message'])
     ];
 }

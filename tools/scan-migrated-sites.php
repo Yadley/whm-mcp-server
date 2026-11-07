@@ -591,18 +591,35 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     $cLime = '#AFE139';
     $cLimeInk = '#0B0D0E';
     $cWhite = '#FFFFFF';
+    $cBorder = '#E2E8F0';
+    $cCardBg = '#F8FAFC';
+    
+    // Alert / Status Colors
     $cAlertBg = '#FEF2F2';
     $cAlertBorder = '#FECACA';
     $cAlertInk = '#991B1B';
+    $cAlertNum = '#DC2626';
+
     $cSuccessBg = '#F0FDF4';
     $cSuccessBorder = '#BBF7D0';
     $cSuccessInk = '#166534';
+    $cSuccessNum = '#15803D';
 
-    $fDisplay = "'Plus Jakarta Sans','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-    $fSans = "'Nunito Sans','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+    $cWarnBg = '#FFFBEB';
+    $cWarnBorder = '#FDE68A';
+    $cWarnInk = '#92400E';
+    $cWarnNum = '#D97706';
+
+    $cGreyBg = '#F3F4F6';
+    $cGreyBorder = '#E5E7EB';
+    $cGreyInk = '#6B7280';
+    $cGreyNum = '#4B5563';
+
+    $fDisplay = "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+    $fSans = "'Nunito Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
     $fMono = "'JetBrains Mono',Consolas,'Courier New',monospace";
 
-    // 1. Newly Migrated Today Section
+    // 1. Newly Migrated Today Section (with generous padding)
     $newMigrationsHtml = "";
     if ($count > 0) {
         $newRows = "";
@@ -611,60 +628,57 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
             $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
             $whmcsStatusRaw = $item['status_in_whmcs'] ?? 'N/A';
             if ($whmcsStatusRaw === 'Active') {
-                $statusBadge = "<span style='background: {$cAlertBg}; color: {$cAlertInk}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;'>Active</span>";
+                $statusBadge = "<span style=\"background: {$cAlertBg}; color: {$cAlertInk}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;\">Active</span>";
             } elseif ($whmcsStatusRaw === 'Closed') {
-                $statusBadge = "<span style='background: {$cPanel}; color: {$cMuted}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;'>Closed</span>";
+                $statusBadge = "<span style=\"background: {$cPanel}; color: {$cMuted}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;\">Closed</span>";
             } else {
-                $statusBadge = "<span style='background: {$cPanel}; color: {$cMuted}; padding: 3px 8px; border-radius: 4px; font-size: 11px;'>{$whmcsStatusRaw}</span>";
+                $statusBadge = "<span style=\"background: {$cPanel}; color: {$cMuted}; padding: 3px 8px; border-radius: 4px; font-size: 11px;\">{$whmcsStatusRaw}</span>";
             }
             
             $ticketStatus = !empty($item['courtesy_ticket_id']) 
-                ? "<span style='color: #166534; font-weight: 700;'>Ticket #{$item['courtesy_ticket_id']}</span>"
-                : "<span style='color: {$cMuted};'>None</span>";
+                ? "<span style=\"color: #166534; font-weight: 700;\">Ticket #{$item['courtesy_ticket_id']}</span>"
+                : "<span style=\"color: {$cMuted};\">None</span>";
             
             $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
-            $destHtml = "<div style='font-weight: 600; color: {$cInk};'>{$ns}</div><div style='color: {$cMuted}; font-size: 12px; margin-top: 2px;'>IP: {$ipsStr}</div>";
+            $destHtml = "<div style=\"font-weight: 600; color: {$cInk};\">{$ns}</div><div style=\"color: {$cMuted}; font-size: 12px; margin-top: 2px;\">IP: {$ipsStr}</div>";
             
-            $newRows .= "<tr>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-all;'>
-                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: {$cInk}; text-decoration: underline; text-decoration-color: {$cLime}; text-underline-offset: 3px; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
-                </td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 14px; color: {$cBody};'>{$client}</td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top;'>{$statusBadge}</td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-word;'>{$destHtml}</td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px;'>{$ticketStatus}</td>
-            </tr>";
+            $newRows .= "<tr>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-all;\">"
+                . "<a href=\"https://" . htmlspecialchars($domain) . "\" target=\"_blank\" style=\"color: {$cInk}; text-decoration: underline; text-decoration-color: {$cLime}; text-underline-offset: 3px; font-weight: 700;\">" . htmlspecialchars($domain) . "</a>"
+                . "</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; color: {$cBody};\">{$client}</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top;\">{$statusBadge}</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-word;\">{$destHtml}</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px;\">{$ticketStatus}</td>"
+                . "</tr>";
         }
         
-        $newMigrationsHtml = "
-        <div style='margin-top: 24px; border: 1px solid {$cHair}; border-radius: 14px; background: {$cPanel}; padding: 18px 20px;'>
-            <p style='margin: 0 0 10px; font-family: {$fDisplay}; font-size: 13px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; color: {$cAlertInk};'>
-                Newly Migrated in Last 24 Hours ({$count})
-            </p>
-            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='background: {$cWhite}; border: 1px solid {$cHair}; border-radius: 10px; overflow: hidden; border-collapse: collapse;'>
-                <thead>
-                    <tr style='background: {$cPanel};'>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>Domain</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>WHMCS Client</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>Status</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>New Destination</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cInk};'>Ticket</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {$newRows}
-                </tbody>
-            </table>
-        </div>";
+        $newMigrationsHtml = "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin: 0 0 20px; background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 12px; border-collapse: separate;\">"
+            . "<tr><td style=\"padding: 20px 24px;\">"
+            . "<p style=\"margin: 0 0 10px; font-family: {$fDisplay}; font-size: 13px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; color: {$cAlertInk};\">"
+            . "Newly Migrated in Last 24 Hours ({$count})"
+            . "</p>"
+            . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background: {$cWhite}; border: 1px solid {$cHair}; border-radius: 10px; overflow: hidden; border-collapse: collapse;\">"
+            . "<thead><tr style=\"background: {$cPanel};\">"
+            . "<th style=\"padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cInk}; text-transform: uppercase;\">Domain</th>"
+            . "<th style=\"padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cInk}; text-transform: uppercase;\">WHMCS Client</th>"
+            . "<th style=\"padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cInk}; text-transform: uppercase;\">Status</th>"
+            . "<th style=\"padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cInk}; text-transform: uppercase;\">Destination</th>"
+            . "<th style=\"padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cInk}; text-transform: uppercase;\">Ticket</th>"
+            . "</tr></thead>"
+            . "<tbody>{$newRows}</tbody>"
+            . "</table>"
+            . "</td></tr>"
+            . "</table>";
     } else {
-        $newMigrationsHtml = "
-        <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='margin: 0 0 24px; background: {$cSuccessBg}; border: 1px solid {$cSuccessBorder}; border-radius: 12px;'>
-            <tr>
-                <td style='padding: 14px 18px; font-family: {$fSans}; font-size: 14px; line-height: 1.55; color: {$cSuccessInk};'>
-                    <strong>0 New Migrations Detected Today:</strong> No client website DNS changes were detected in the last 24-hour cycle.
-                </td>
-            </tr>
-        </table>";
+        $newMigrationsHtml = "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin: 0 0 20px; background: {$cSuccessBg}; border: 1px solid {$cSuccessBorder}; border-radius: 12px; border-collapse: separate;\">"
+            . "<tr>"
+            . "<td style=\"padding: 20px 24px; font-family: {$fSans}; font-size: 14px; line-height: 1.6; color: {$cSuccessInk};\">"
+            . "<div style=\"font-family: {$fDisplay}; font-size: 14px; font-weight: 700; color: {$cSuccessInk}; margin-bottom: 4px;\">0 New Migrations Detected Today</div>"
+            . "<div style=\"font-family: {$fSans}; font-size: 14px; line-height: 1.55; color: {$cSuccessInk};\">No client website DNS changes were detected in the last 24-hour audit cycle.</div>"
+            . "</td>"
+            . "</tr>"
+            . "</table>";
     }
 
     // 2. Action Required Section: Migrated Away But STILL Active in WHMCS
@@ -676,171 +690,169 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
             $ns = htmlspecialchars(implode(', ', array_slice($item['ns'], 0, 2)));
             $ipsStr = !empty($item['ips']) ? htmlspecialchars(implode(', ', array_slice($item['ips'], 0, 2))) : 'None';
             
-            $actionRows .= "<tr>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-all;'>
-                    <a href='https://" . htmlspecialchars($domain) . "' target='_blank' style='color: {$cInk}; text-decoration: underline; text-decoration-color: {$cLime}; text-underline-offset: 3px; font-weight: 600;'>" . htmlspecialchars($domain) . "</a>
-                </td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 14px; color: {$cBody};'>{$client}</td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top;'>
-                    <span style='background: {$cAlertBg}; color: {$cAlertInk}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px;'>ACTIVE IN WHMCS</span>
-                </td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; color: {$cBody}; word-break: break-word;'>
-                    <div style='font-weight: 600; color: {$cInk};'>{$ns}</div>
-                    <div style='color: {$cMuted}; font-size: 12px; margin-top: 2px;'>IP: {$ipsStr}</div>
-                </td>
-                <td style='padding: 10px 12px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; font-weight: 700; color: {$cAlertInk};'>
-                    Cancel & Archive
-                </td>
-            </tr>";
+            $actionRows .= "<tr>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; word-break: break-all;\">"
+                . "<a href=\"https://" . htmlspecialchars($domain) . "\" target=\"_blank\" style=\"color: {$cInk}; text-decoration: underline; text-decoration-color: {$cLime}; text-underline-offset: 3px; font-weight: 700;\">" . htmlspecialchars($domain) . "</a>"
+                . "</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; color: {$cBody};\">{$client}</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top;\">"
+                . "<span style=\"background: {$cAlertBg}; color: {$cAlertInk}; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px;\">ACTIVE IN WHMCS</span>"
+                . "</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; color: {$cBody}; word-break: break-word;\">"
+                . "<div style=\"font-weight: 600; color: {$cInk};\">{$ns}</div>"
+                . "<div style=\"color: {$cMuted}; font-size: 11px; margin-top: 2px;\">IP: {$ipsStr}</div>"
+                . "</td>"
+                . "<td style=\"padding: 12px 14px; border-bottom: 1px solid {$cHair}; vertical-align: top; font-family: {$fSans}; font-size: 13px; font-weight: 700; color: {$cAlertInk};\">"
+                . "Cancel & Archive"
+                . "</td>"
+                . "</tr>";
         }
         
-        $actionRequiredHtml = "
-        <div style='margin: 0 0 24px; border: 1px solid {$cAlertBorder}; border-radius: 14px; background: #FFFBFB; padding: 18px 20px;'>
-            <p style='margin: 0 0 6px; font-family: {$fDisplay}; font-size: 13px; line-height: 1.4; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: {$cAlertInk};'>
-                Action Required: Migrated but Active in WHMCS ({$actionCount})
-            </p>
-            <p style='margin: 0 0 16px; font-family: {$fSans}; font-size: 14px; line-height: 1.55; color: {$cBody};'>
-                The following client domains have migrated away to external nameservers, but their hosting service remains marked <strong>Active</strong> in WHMCS. Keeping migrated accounts active consumes server quotas and cPanel licenses.
-            </p>
-            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='background: {$cWhite}; border: 1px solid {$cAlertBorder}; border-radius: 10px; overflow: hidden; border-collapse: collapse;'>
-                <thead>
-                    <tr style='background: #FEE2E2;'>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Domain</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>WHMCS Client</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Status</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Destination</th>
-                        <th style='padding: 10px 12px; text-align: left; font-family: {$fDisplay}; font-size: 12px; font-weight: 700; color: {$cAlertInk};'>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {$actionRows}
-                </tbody>
-            </table>
-        </div>";
+        $actionRequiredHtml = "<div style=\"margin: 0 0 10px; font-family: {$fDisplay}; font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: {$cAlertInk};\">Action Required: Migrated but Active in WHMCS ({$actionCount})</div>"
+            . "<div style=\"border: 1px solid {$cAlertBorder}; border-radius: 12px; overflow: hidden; margin-bottom: 20px; background: {$cWhite};\">"
+            . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">"
+            . "<thead><tr style=\"background: #FEE2E2;\">"
+            . "<th style=\"padding: 10px 14px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cAlertInk}; text-transform: uppercase;\">Domain</th>"
+            . "<th style=\"padding: 10px 14px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cAlertInk}; text-transform: uppercase;\">WHMCS Client</th>"
+            . "<th style=\"padding: 10px 14px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cAlertInk}; text-transform: uppercase;\">Status</th>"
+            . "<th style=\"padding: 10px 14px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cAlertInk}; text-transform: uppercase;\">Destination</th>"
+            . "<th style=\"padding: 10px 14px; text-align: left; font-family: {$fDisplay}; font-size: 11px; font-weight: 700; color: {$cAlertInk}; text-transform: uppercase;\">Action</th>"
+            . "</tr></thead>"
+            . "<tbody>{$actionRows}</tbody>"
+            . "</table>"
+            . "</div>";
     }
 
-    $metricsHtml = "
-    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' style='margin: 0 0 24px;'>
-      <tr>
-        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
-          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
-            <tr><td>
-              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cInk}; line-height: 1;'>{$totalScanned}</div>
-              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Total Audited</div>
-            </td></tr>
-          </table>
-        </td>
-        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
-          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
-            <tr><td>
-              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: #166534; line-height: 1;'>{$activeCount}</div>
-              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Active Here</div>
-            </td></tr>
-          </table>
-        </td>
-        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
-          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
-            <tr><td>
-              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cAlertInk}; line-height: 1;'>{$actionCount}</div>
-              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Action Needed</div>
-            </td></tr>
-          </table>
-        </td>
-        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
-          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
-            <tr><td>
-              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cBody}; line-height: 1;'>{$migratedCount}</div>
-              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>All Migrated</div>
-            </td></tr>
-          </table>
-        </td>
-        <td class='cy-metric-cell' width='20%' style='padding: 4px;'>
-          <table role='presentation' width='100%' cellpadding='10' cellspacing='0' border='0' style='background: {$cPanel}; border: 1px solid {$cHair}; border-radius: 10px; text-align: center;'>
-            <tr><td>
-              <div style='font-family: {$fDisplay}; font-size: 22px; font-weight: 800; color: {$cMuted}; line-height: 1;'>{$deadCount}</div>
-              <div style='font-family: {$fSans}; font-size: 11px; font-weight: 700; color: {$cMuted}; text-transform: uppercase; margin-top: 4px;'>Expired / Other</div>
-            </td></tr>
-          </table>
-        </td>
-      </tr>
-    </table>";
+    // 3. Clean 2x2 Color-Coded Metrics Grid
+    $m3Bg = ($actionCount > 0) ? $cAlertBg : $cWarnBg;
+    $m3Border = ($actionCount > 0) ? $cAlertBorder : $cWarnBorder;
+    $m3LabelColor = ($actionCount > 0) ? $cAlertInk : $cWarnInk;
+    $m3NumColor = ($actionCount > 0) ? $cAlertNum : $cWarnNum;
+    $m3Subtitle = ($actionCount > 0) ? "Migrated but active in WHMCS" : "No domains routed away";
+
+    $metricsHtml = "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin: 0 0 20px;\">"
+      . "<tr>"
+      . "<td class=\"cy-col\" width=\"48.5%\" valign=\"top\" style=\"background: {$cCardBg}; border: 1px solid {$cBorder}; border-radius: 12px; padding: 16px 20px;\">"
+      . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #475569;\">Total Audited</div>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 28px; font-weight: 800; color: #0F172A; line-height: 1.15; margin: 6px 0 2px;\">{$totalScanned}</div>"
+      . "<div style=\"font-family: {$fSans}; font-size: 12px; line-height: 1.4; color: #64748B;\">Monitored cPanel accounts</div>"
+      . "</td></tr></table>"
+      . "</td>"
+      . "<td class=\"cy-col-gap\" width=\"3%\" style=\"width: 3%; font-size: 0; line-height: 0;\">&nbsp;</td>"
+      . "<td class=\"cy-col\" width=\"48.5%\" valign=\"top\" style=\"background: {$cSuccessBg}; border: 1px solid {$cSuccessBorder}; border-radius: 12px; padding: 16px 20px;\">"
+      . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: {$cSuccessInk};\">Active on Server</div>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 28px; font-weight: 800; color: {$cSuccessNum}; line-height: 1.15; margin: 6px 0 2px;\">{$activeCount}</div>"
+      . "<div style=\"font-family: {$fSans}; font-size: 12px; line-height: 1.4; color: {$cSuccessInk};\">Resolving to 66.29.147.164</div>"
+      . "</td></tr></table>"
+      . "</td>"
+      . "</tr>"
+      . "<tr><td class=\"cy-row-gap\" colspan=\"3\" height=\"12\" style=\"height: 12px; line-height: 12px; font-size: 0;\">&nbsp;</td></tr>"
+      . "<tr>"
+      . "<td class=\"cy-col\" width=\"48.5%\" valign=\"top\" style=\"background: {$m3Bg}; border: 1px solid {$m3Border}; border-radius: 12px; padding: 16px 20px;\">"
+      . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: {$m3LabelColor};\">Action Required</div>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 28px; font-weight: 800; color: {$m3NumColor}; line-height: 1.15; margin: 6px 0 2px;\">{$actionCount}</div>"
+      . "<div style=\"font-family: {$fSans}; font-size: 12px; line-height: 1.4; color: {$m3LabelColor};\">{$m3Subtitle}</div>"
+      . "</td></tr></table>"
+      . "</td>"
+      . "<td class=\"cy-col-gap\" width=\"3%\" style=\"width: 3%; font-size: 0; line-height: 0;\">&nbsp;</td>"
+      . "<td class=\"cy-col\" width=\"48.5%\" valign=\"top\" style=\"background: {$cGreyBg}; border: 1px solid {$cGreyBorder}; border-radius: 12px; padding: 16px 20px;\">"
+      . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: {$cGreyInk};\">Inactive / Excluded</div>"
+      . "<div style=\"font-family: {$fDisplay}; font-size: 28px; font-weight: 800; color: {$cGreyNum}; line-height: 1.15; margin: 6px 0 2px;\">{$deadCount}</div>"
+      . "<div style=\"font-family: {$fSans}; font-size: 12px; line-height: 1.4; color: {$cGreyInk};\">Core platform &amp; dormant</div>"
+      . "</td></tr></table>"
+      . "</td>"
+      . "</tr>"
+      . "</table>";
 
     $ctaUrl = 'https://creativeyadley.com/clientarea/admin/clients.php';
     $ctaLabel = 'Review Migrated Accounts';
 
-    $ctaBlock = "
-    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
-      <tr><td height='24' style='height:24px;line-height:24px;font-size:0;'>&nbsp;</td></tr>
-      <tr>
-        <td align='left'>
-          <!--[if mso]>
-          <v:roundrect xmlns:v='urn:schemas-microsoft-com:vml' xmlns:w='urn:schemas-microsoft-com:office:word' href='{$ctaUrl}' style='height:54px;v-text-anchor:middle;width:280px;' arcsize='50%' fillcolor='{$cLime}' stroke='f'>
-            <w:anchorlock/>
-            <center style='color:{$cLimeInk};font-family:Arial,sans-serif;font-size:16px;font-weight:bold;'>{$ctaLabel}</center>
-          </v:roundrect>
-          <![endif]-->
-          <!--[if !mso]><!-->
-          <a href='{$ctaUrl}' class='cy-btn' style='display:inline-block;padding:18px 34px;font-family:{$fDisplay};font-size:16px;line-height:1;font-weight:700;color:{$cLimeInk};background:{$cLime};border:1px solid {$cLime};text-decoration:none;border-radius:999px;'>{$ctaLabel}</a>
-          <!--<![endif]-->
-        </td>
-      </tr>
-      <tr><td height='28' style='height:28px;line-height:28px;font-size:0;'>&nbsp;</td></tr>
-    </table>";
+    $ctaBlock = "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">"
+      . "<tr><td height=\"18\" style=\"height: 18px; line-height: 18px; font-size: 0;\">&nbsp;</td></tr>"
+      . "<tr>"
+      . "<td align=\"left\">"
+      . "<!--[if mso]>"
+      . "<v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" href=\"{$ctaUrl}\" style=\"height: 50px; v-text-anchor: middle; width: 270px;\" arcsize=\"50%\" fillcolor=\"{$cLime}\" stroke=\"f\">"
+      . "<w:anchorlock/>"
+      . "<center style=\"color: {$cLimeInk}; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold;\">{$ctaLabel}</center>"
+      . "</v:roundrect>"
+      . "<![endif]-->"
+      . "<!--[if !mso]><!-->"
+      . "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"border-collapse: separate;\">"
+      . "<tr>"
+      . "<td bgcolor=\"{$cLime}\" style=\"background-color: {$cLime}; border-radius: 9999px;\">"
+      . "<a href=\"{$ctaUrl}\" class=\"cy-btn\" style=\"display: inline-block; padding: 16px 36px; font-family: {$fDisplay}; font-size: 15px; line-height: 1; font-weight: 700; color: {$cLimeInk}; background-color: {$cLime}; border: 1px solid {$cLime}; text-decoration: none; border-radius: 9999px; text-align: center;\">{$ctaLabel}</a>"
+      . "</td>"
+      . "</tr>"
+      . "</table>"
+      . "<!--<![endif]-->"
+      . "</td>"
+      . "</tr>"
+      . "<tr><td height=\"20\" style=\"height: 20px; line-height: 20px; font-size: 0;\">&nbsp;</td></tr>"
+      . "</table>";
 
-    $htmlBody = "<!doctype html>
-<html xmlns='http://www.w3.org/1999/xhtml' xmlns:v='urn:schemas-microsoft-com:vml' xmlns:o='urn:schemas-microsoft-com:office:office' lang='en' dir='ltr'>
-<head>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'>
-<meta name='color-scheme' content='light'>
-<meta name='supported-color-schemes' content='light'>
-<title>Creative Yadley Migration Digest</title>
-<style type='text/css'>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Nunito+Sans:wght@400;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
-  html,body{margin:0!important;padding:0!important;width:100%!important;}
-  table{border-collapse:collapse;}
-  img{-ms-interpolation-mode:bicubic;}
-  a{text-decoration:none;}
-  @media only screen and (max-width:620px){
-    .cy-shell{width:100%!important;}
-    .cy-px{padding-left:24px!important;padding-right:24px!important;}
-    .cy-h1{font-size:22px!important;line-height:1.25!important;}
-    .cy-btn{display:block!important;text-align:center!important;padding:18px 24px!important;}
-    .cy-metric-cell{display:block!important;width:100%!important;margin-bottom:8px!important;}
-  }
-</style>
-</head>
-<body style='margin:0;padding:0;background:{$cPage};-webkit-text-size-adjust:100%;'>
-<div style='display:none;font-size:1px;color:{$cPage};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;'>Creative Yadley Migration Digest - Server 2 Audit Report</div>
-<table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' bgcolor='{$cPage}' style='background:{$cPage};'>
-  <tr>
-    <td align='center' style='padding:24px 12px;'>
-      <table role='presentation' width='600' cellpadding='0' cellspacing='0' border='0' class='cy-shell' style='width:600px;max-width:600px;background:{$cWhite};border-radius:16px;overflow:hidden;'>
-        <!-- Internal Admin Content-Only Fragment: No Hero, No Logo, No Footer -->
-        <tr>
-          <td class='cy-px' bgcolor='{$cWhite}' style='background:{$cWhite};padding:40px 40px 32px;'>
-            <p style='margin:0 0 10px;font-family:{$fDisplay};font-size:12px;line-height:1.4;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:{$cMuted};'>SERVER 2 MONITORING</p>
-            <h1 class='cy-h1' style='margin:0 0 14px;font-family:{$fDisplay};font-size:24px;line-height:1.22;letter-spacing:-0.4px;font-weight:700;color:{$cInk};'>Creative Yadley Migration Digest</h1>
-            <p style='margin:0 0 20px;font-family:{$fSans};font-size:15px;line-height:1.55;color:{$cBody};'>
-              Automated DNS and nameserver audit report for server2.creativeyadley.com ({$dateStr}). Monitored client accounts, external routing changes, and recommended service cleanups are detailed below.
-            </p>
-            
-            {$metricsHtml}
-            {$actionRequiredHtml}
-            {$newMigrationsHtml}
-            {$ctaBlock}
+    $rawHtml = "<!doctype html>"
+      . "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" lang=\"en\" dir=\"ltr\">"
+      . "<head>"
+      . "<meta charset=\"utf-8\">"
+      . "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      . "<meta name=\"color-scheme\" content=\"light\">"
+      . "<meta name=\"supported-color-schemes\" content=\"light\">"
+      . "<title>Creative Yadley Migration Digest</title>"
+      . "<style type=\"text/css\">"
+      . "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Nunito+Sans:wght@400;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');"
+      . "html,body{margin:0!important;padding:0!important;width:100%!important;}"
+      . "table{border-collapse:collapse;}"
+      . "img{-ms-interpolation-mode:bicubic;}"
+      . "a{text-decoration:none;}"
+      . "@media only screen and (max-width:620px){"
+      . ".cy-shell{width:100%!important;}"
+      . ".cy-px{padding-left:20px!important;padding-right:20px!important;padding-top:28px!important;padding-bottom:24px!important;}"
+      . ".cy-h1{font-size:22px!important;line-height:1.25!important;}"
+      . ".cy-btn{display:block!important;width:100%!important;box-sizing:border-box!important;text-align:center!important;padding:16px 20px!important;}"
+      . ".cy-col{display:block!important;width:100%!important;box-sizing:border-box!important;margin-bottom:10px!important;}"
+      . ".cy-col-gap{display:none!important;}"
+      . ".cy-row-gap{display:none!important;}"
+      . "}"
+      . "</style>"
+      . "</head>"
+      . "<body style=\"margin:0;padding:0;background:{$cPage};-webkit-text-size-adjust:100%;\">"
+      . "<div style=\"display:none;font-size:1px;color:{$cPage};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;\">Creative Yadley Migration Digest - Server 2 Audit Report</div>"
+      . "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" bgcolor=\"{$cPage}\" style=\"background:{$cPage};\">"
+      . "<tr>"
+      . "<td align=\"center\" style=\"padding:16px 10px;\">"
+      . "<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" class=\"cy-shell\" style=\"width:600px;max-width:600px;background:{$cWhite};border-radius:14px;overflow:hidden;\">"
+      . "<!-- Internal Admin Content-Only Fragment: No Hero, No Logo, No Footer -->"
+      . "<tr>"
+      . "<td class=\"cy-px\" bgcolor=\"{$cWhite}\" style=\"background:{$cWhite};padding:32px 36px 28px;\">"
+      . "<p style=\"margin:0 0 6px;font-family:{$fDisplay};font-size:11px;line-height:1.4;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{$cMuted};\">SERVER 2 MONITORING</p>"
+      . "<h1 class=\"cy-h1\" style=\"margin:0 0 10px;font-family:{$fDisplay};font-size:24px;line-height:1.22;letter-spacing:-0.4px;font-weight:700;color:{$cInk};\">Creative Yadley Migration Digest</h1>"
+      . "<p style=\"margin:0 0 18px;font-family:{$fSans};font-size:15px;line-height:1.5;color:{$cBody};\">"
+      . "Automated DNS and nameserver audit report for server2.creativeyadley.com ({$dateStr}). Monitored client accounts, external routing changes, and recommended service cleanups are detailed below."
+      . "</p>"
+      . "{$newMigrationsHtml}"
+      . "{$metricsHtml}"
+      . "{$actionRequiredHtml}"
+      . "{$ctaBlock}"
+      . "<p style=\"margin:16px 0 0;font-family:{$fSans};font-size:12px;line-height:1.55;color:{$cMuted};border-top:1px solid {$cHair};padding-top:14px;\">"
+      . "Internal studio audit automation. Not a client message. &middot; <a href=\"https://creativeyadley.com/clientarea/admin/\" style=\"color:{$cMuted};text-decoration:underline;\">Admin Area</a> &middot; server2.creativeyadley.com"
+      . "</p>"
+      . "</td>"
+      . "</tr>"
+      . "</table>"
+      . "</td>"
+      . "</tr>"
+      . "</table>"
+      . "</body>"
+      . "</html>";
 
-            <p style='margin:20px 0 0;font-family:{$fSans};font-size:12px;line-height:1.6;color:{$cMuted};border-top:1px solid {$cHair};padding-top:16px;'>
-              Internal studio audit automation. Not a client message. &middot; <a href='https://creativeyadley.com/clientarea/admin/' style='color:{$cMuted};text-decoration:underline;'>Admin Area</a> &middot; server2.creativeyadley.com
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>";
+    $compact = preg_replace('/>\\r?\\n\\s*</', '><', $rawHtml);
+    $compact = preg_replace('/\\r?\\n\\s*/', ' ', $compact);
+    $htmlBody = trim($compact);
     
     // Authenticated SPF-aligned headers
     $headers = [
