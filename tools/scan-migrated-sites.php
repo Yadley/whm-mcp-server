@@ -34,7 +34,7 @@
 
 cli_set_process_title("CreativeYadley-Migration-Scanner");
 
-$options = getopt("", ["dry-run", "notify-only", "force-ticket", "domain::", "test-client::"]);
+$options = getopt("", ["dry-run", "notify-only", "force-ticket", "domain:", "test-client:"]);
 $isDryRun = isset($options['dry-run']);
 $isNotifyOnly = isset($options['notify-only']);
 $forceTicket = isset($options['force-ticket']);
@@ -134,9 +134,11 @@ if ($pdo) {
         foreach ($domainServices as $dom => $rows) {
             // Determine the accurate status for this domain:
             // 1. If any service row belongs to an Active client and is Active, that takes priority
-            // 2. If all clients associated with this domain are Closed in WHMCS, status is Closed
-            // 3. Otherwise, use the status from the latest service row, respecting client status
-            $activeRow = null;
+            // 2. Safeguard: If any service row is Active (even if client status is Closed/Inactive in error), treat as Active
+            // 3. If all clients associated with this domain are Closed and services are not active, status is Closed
+            // 4. Otherwise, use the status from the latest service row, respecting client status
+            $activeClientActiveService = null;
+            $anyActiveService = null;
             $allClientsClosed = true;
 
             foreach ($rows as $r) {
@@ -145,17 +147,25 @@ if ($pdo) {
                 if ($cStatus !== 'closed') {
                     $allClientsClosed = false;
                 }
-                if ($cStatus === 'active' && $sStatus === 'Active' && !$activeRow) {
-                    $activeRow = $r;
+                if ($cStatus === 'active' && $sStatus === 'Active' && !$activeClientActiveService) {
+                    $activeClientActiveService = $r;
+                }
+                if ($sStatus === 'Active' && !$anyActiveService) {
+                    $anyActiveService = $r;
                 }
             }
 
-            if ($allClientsClosed) {
+            if ($activeClientActiveService) {
+                $chosen = $activeClientActiveService;
+                $statusInWhmcs = 'Active';
+            } elseif ($anyActiveService) {
+                // Safeguard: An Active hosting service takes precedence over an administrative client-status error
+                $chosen = $anyActiveService;
+                $statusInWhmcs = 'Active';
+                logMessage("Notice for {$dom}: Active hosting service #{$chosen['serviceid']} found, but client #{$chosen['userid']} status is '{$chosen['client_status']}'. Prioritizing Active service.", $logFile);
+            } elseif ($allClientsClosed) {
                 $chosen = $rows[0];
                 $statusInWhmcs = 'Closed';
-            } elseif ($activeRow) {
-                $chosen = $activeRow;
-                $statusInWhmcs = 'Active';
             } else {
                 $chosen = $rows[0]; // latest service
                 $cStatus = strtolower(trim($chosen['client_status'] ?? ''));
@@ -172,6 +182,7 @@ if ($pdo) {
                 'domain' => $dom,
                 'user' => $chosen['username'],
                 'serviceid' => $chosen['serviceid'],
+                'service_status' => $chosen['domainstatus'] ?? null,
                 'userid' => $chosen['userid'],
                 'client_name' => trim(($chosen['firstname'] ?? '') . ' ' . ($chosen['lastname'] ?? '')),
                 'client_email' => $chosen['client_email'],
@@ -195,9 +206,12 @@ if ($pdo) {
         while ($row = $stmt2->fetch(PDO::FETCH_ASSOC)) {
             $dom = cleanDomain($row['domain']);
             if ($dom && !isset($targets[$dom])) {
+                $isDomainActive = (strtolower(trim($row['status'] ?? '')) === 'active');
                 $isClientClosed = (strtolower(trim($row['client_status'] ?? '')) === 'closed');
                 $isClientInactive = (strtolower(trim($row['client_status'] ?? '')) === 'inactive');
-                if ($isClientClosed) {
+                if ($isDomainActive) {
+                    $statusInWhmcs = 'Active';
+                } elseif ($isClientClosed) {
                     $statusInWhmcs = 'Closed';
                 } elseif ($isClientInactive) {
                     $statusInWhmcs = 'Inactive';
@@ -209,6 +223,7 @@ if ($pdo) {
                     'domain' => $dom,
                     'user' => '',
                     'serviceid' => null,
+                    'service_status' => $row['status'] ?? null,
                     'userid' => $row['userid'],
                     'client_name' => trim(($row['firstname'] ?? '') . ' ' . ($row['lastname'] ?? '')),
                     'client_email' => $row['client_email'],
@@ -488,10 +503,19 @@ function openWhmcsCourtesyTicket($pdo, $meta, $entry, $isDryRun, $logFile) {
     
     // Only open tickets for Active services in WHMCS (don't ticket clients who already cancelled or closed)
     $whmcsStatus = $meta['status_in_whmcs'] ?? '';
+    $serviceStatus = $meta['service_status'] ?? '';
     $clientStatus = strtolower(trim($meta['client_status'] ?? ''));
-    if ($whmcsStatus === 'Cancelled' || $whmcsStatus === 'Terminated' || $whmcsStatus === 'Closed' || $clientStatus === 'closed') {
-        logMessage("Skipping courtesy ticket for {$domain}: Account is already {$whmcsStatus}/Closed in WHMCS.", $logFile);
+
+    // Safeguard: An Active hosting/domain service takes precedence over an accidental Closed/Inactive client status
+    $isActiveService = ($whmcsStatus === 'Active' || strtolower(trim($serviceStatus)) === 'active');
+
+    if (!$isActiveService) {
+        logMessage("Skipping courtesy ticket for {$domain}: Account service is {$whmcsStatus}/{$serviceStatus} (Client: {$clientStatus}) in WHMCS.", $logFile);
         return null;
+    }
+
+    if ($clientStatus === 'closed' || $clientStatus === 'inactive') {
+        logMessage("Notice: Client #{$userId} for {$domain} has client status '{$clientStatus}', but hosting service is Active. Proceeding with courtesy ticket.", $logFile);
     }
     
     $subject = "Important: Nameserver Update Detected for {$domain}";
@@ -574,8 +598,7 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     $actionRequired = array_filter($auditResults, function($item) {
         $isMigrated = ($item['status'] === 'MIGRATED_AWAY' || $item['status'] === 'A_RECORD_MIGRATED');
         $isActiveInWhmcs = (($item['status_in_whmcs'] ?? '') === 'Active');
-        $isClientClosed = (strtolower(trim($item['client_status'] ?? '')) === 'closed');
-        return $isMigrated && $isActiveInWhmcs && !$isClientClosed;
+        return $isMigrated && $isActiveInWhmcs;
     });
     $actionCount = count($actionRequired);
 
@@ -911,7 +934,9 @@ function sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $au
     }
 }
 
-sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile, $testClientId, $whmcsPath, $pdo);
+if (!$filterDomain || $testClientId) {
+    sendAdminNotificationEmail($adminEmail, $fromEmail, $newMigrations, $auditResults, $isDryRun, $logFile, $testClientId, $whmcsPath, $pdo);
+}
 
 // 8. Console Summary Output
 $migratedList = array_filter($auditResults, fn($x) => $x['status'] === 'MIGRATED_AWAY' || $x['status'] === 'A_RECORD_MIGRATED');
