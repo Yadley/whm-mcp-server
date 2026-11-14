@@ -1,0 +1,32 @@
+{
+  "install_php": {
+    "subject": "New Installation of $scriptname",
+    "isHtml": false,
+    "content": "A new installation of $scriptname $version has been completed. The details of the installation are shown below:\nPath : $path\nURL : $url\nAdmin URL : $admin_url\n&amp;lt;if $datadirectory&amp;gt;Data Directory : $datadirectory&amp;lt;/if&amp;gt;\n&amp;lt;if $admin_username&amp;gt;Admin Username : $admin_username&amp;lt;/if&amp;gt;\n&amp;lt;if $admin_pass&amp;gt;Admin Password : $admin_pass&amp;lt;/if&amp;gt;\n&amp;lt;if $admin_email&amp;gt;Admin Email: $admin_email&amp;lt;/if&amp;gt;\n&amp;lt;if $dbname&amp;gt;MySQL Database : $dbname&amp;lt;/if&amp;gt;\n&amp;lt;if $dbuser&amp;gt;MySQL DB User : $dbuser&amp;lt;/if&amp;gt;\n&amp;lt;if $dbhost&amp;gt;MySQL DB Host : $dbhost&amp;lt;/if&amp;gt;\n&amp;lt;if $dbpass&amp;gt;MySQL DB Password : $dbpass&amp;lt;/if&amp;gt;\n&amp;lt;if $cron&amp;gt;Cron Job : $cron&amp;lt;/if&amp;gt;\n&amp;lt;if $disable_notify_update&amp;gt;Update Notification : $disable_notify_update&amp;lt;/if&amp;gt;\n&amp;lt;if $eu_auto_upgrade&amp;gt;Auto Upgrade : $eu_auto_upgrade&amp;lt;/if&amp;gt;\n&amp;lt;if $auto_backup&amp;gt;Automated Backups : $auto_backup&amp;lt;/if&amp;gt;\n&amp;lt;if $auto_backup_rotation&amp;gt;Backup Rotation : $auto_backup_rotation&amp;lt;/if&amp;gt;\n&amp;lt;if $backup_location&amp;gt;Backup Location : $backup_location&amp;lt;/if&amp;gt;\n&amp;lt;if $time&amp;gt;Time of Installation : $time&amp;lt;/if&amp;gt;\n\nIf you wish to unsubscribe from such emails, go to your Control Panel -&amp;gt; Softaculous -&amp;gt; Email Settings"
+  },
+  "clone": {
+    "subject": "Clone Installation of $scriptname",
+    "isHtml": false,
+    "content": "Your installation of $scriptname $version has been cloned successfully.\n\nYour original installation details :\nOriginal Path : $old_path\nOriginal URL : $old_url\n\nYour cloned installation details :\nPath : $path\nURL : $url\nAdmin URL : $admin_url\n&lt;if $datadirectory&gt;Data Directory : $datadirectory&lt;/if&gt;\n&lt;if $dbname&gt;MySQL Database : $dbname&lt;/if&gt;\n&lt;if $dbuser&gt;MySQL DB User : $dbuser&lt;/if&gt;\n&lt;if $dbhost&gt;MySQL DB Host : $dbhost&lt;/if&gt;\n&lt;if $dbpass&gt;MySQL DB Password : $dbpass&lt;/if&gt;\n&lt;if $cron&gt;Cron Job : $cron&lt;/if&gt;\n&lt;if $time&gt;Time of Installation : $time&lt;/if&gt;\n\nIf you wish to unsubscribe from such emails, go to your Control Panel -&gt; Softaculous -&gt; Email Settings"
+  },
+  "staging": {
+    "subject": "Staging of $scriptname",
+    "isHtml": false,
+    "content": "Your Staging of $scriptname $version has been completed successfully.\n\nYour live installation details :\nOriginal Path : $live_path\nOriginal URL : $live_url\n\nYour staging installation details :\nPath : $path\nURL : $url\nAdmin URL : $admin_url\n&lt;if $datadirectory&gt;Data Directory : $datadirectory&lt;/if&gt;\n&lt;if $dbname&gt;MySQL Database : $dbname&lt;/if&gt;\n&lt;if $dbuser&gt;MySQL DB User : $dbuser&lt;/if&gt;\n&lt;if $dbhost&gt;MySQL DB Host : $dbhost&lt;/if&gt;\n&lt;if $dbpass&gt;MySQL DB Password : $dbpass&lt;/if&gt;\n&lt;if $cron&gt;Cron Job : $cron&lt;/if&gt;\n&lt;if $time&gt;Time of Installation : $time&lt;/if&gt;\n\nIf you wish to unsubscribe from such emails, go to your Control Panel -&gt; Softaculous -&gt; Email Settings"
+  },
+  "pushtolive": {
+    "subject": "Pushing $scriptname to live",
+    "isHtml": false,
+    "content": "Pushing your $scriptname site $version to live has been completed successfully.\n\nYour live installation details :\nOriginal Path : $live_path\nOriginal URL : $live_url\n\nYour staging installation details :\nPath : $path\nURL : $url\nAdmin URL : $admin_url\n&lt;if $datadirectory&gt;Data Directory : $datadirectory&lt;/if&gt;\n&lt;if $dbname&gt;MySQL Database : $dbname&lt;/if&gt;\n&lt;if $dbuser&gt;MySQL DB User : $dbuser&lt;/if&gt;\n&lt;if $dbhost&gt;MySQL DB Host : $dbhost&lt;/if&gt;\n&lt;if $dbpass&gt;MySQL DB Password : $dbpass&lt;/if&gt;\n&lt;if $cron&gt;Cron Job : $cron&lt;/if&gt;\n\nIf you wish to unsubscribe from such emails, go to your Control Panel -&gt; Softaculous -&gt; Email Settings"
+  },
+  "backup": {
+    "subject": "Backup of your $scriptname installation",
+    "isHtml": false,
+    "content": "The backup of your $scriptname installation was completed successfully.\nThe details are as follows :\nInstallation Path : $path\nInstallation URL : $url\n&lt;if $backup_location&gt;Backup Location : $backup_location&lt;/if&gt;\nBackup Path : $backup_file\n&lt;if $backup_note&gt;Backup Note : $backup_note&lt;/if&gt;\n\nYou can access the backup from the Backups Section in Softaculous.\n\nIf you wish to unsubscribe from such emails, go to your Control Panel -&gt; Softaculous -&gt; Email Settings"
+  },
+  "autoupgrade_success_user": {
+    "subject": "$scriptname Installation Auto Upgraded Successfully",
+    "isHtml": false,
+    "content": "Your $scriptname installation has been successfully auto upgraded to the latest version.\nThe details are as follows :\nInstallation URL : $url\nLatest Version : $version\nOld Version : $oldversion\n\nIf you wish to unsubscribe from such emails, go to your Control Panel -&gt; Softaculous -&gt; Email Settings"
+  }
+}
